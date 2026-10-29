@@ -1,0 +1,12 @@
+{
+  "comment": "Recorded manual runs of the graphical and hosted clients: the one half of the client matrix no script can check. scripts/mcp-client-probe.ts reads this file and counts a run only when every field is filled and deployedCommit is the commit under test. Add an entry only after you yourself opened the client, pasted the config from its page under docs/connect/, saw the tools, and ran one scoped memory_query. Never record someone else's run.",
+  "fields": {
+    "client": "the page name under docs/connect/, without .md",
+    "who": "the person who ran it",
+    "when": "ISO 8601 instant: 2026-10-05T18:00:00Z, or with a +HH:MM offset",
+    "deployedCommit": "the Willder commit that was live when you ran it, 8 to 40 hex characters so it names one commit",
+    "clientVersion": "the client's own version, from its about screen",
+    "saw": "the tool count and what the memory_query answered"
+  },
+  "runs": []
+}

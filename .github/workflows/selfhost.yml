@@ -1,0 +1,156 @@
+name: Self-host
+
+# The self-host path (docs/self-host.md) as a stranger runs it: the compose stack built and
+# started from this checkout, the documented commands, then npm run selfhost:smoke. While
+# the stack runs, every new connection a container opens to an address outside its own
+# Docker network is logged and dropped, and the job fails unless that count is zero, so a
+# green run also proves the stack called nothing outside this machine.
+#
+# It runs when the self-host surface changes, weekly against main (a change elsewhere can
+# break it too), and by hand. It is not part of the `test` check: a build of the memory
+# service image costs minutes most pull requests do not need to spend (docs/ci-minutes.md).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - docker-compose.yml
+      - .env.selfhost.example
+      - memory-service/Dockerfile
+      - memory-service/.dockerignore
+      - memory-service/requirements.txt
+      - memory-service/app/**
+      - mcp/server.ts
+      - prisma/migrations/**
+      - services/memory/org-export.ts
+      - scripts/selfhost-*.ts
+      - scripts/lib/selfhost.ts
+      - scripts/lib/egress-guard.mjs
+      - scripts/lib/local-database-guard.ts
+      - scripts/run-check.sh
+      - package-lock.json
+      - .github/workflows/selfhost.yml
+  push:
+    branches: [main]
+    paths:
+      - docker-compose.yml
+      - .env.selfhost.example
+      - memory-service/Dockerfile
+      - memory-service/.dockerignore
+      - memory-service/requirements.txt
+      - memory-service/app/**
+      - mcp/server.ts
+      - prisma/migrations/**
+      - services/memory/org-export.ts
+      - scripts/selfhost-*.ts
+      - scripts/lib/selfhost.ts
+      - scripts/lib/egress-guard.mjs
+      - scripts/lib/local-database-guard.ts
+      - scripts/run-check.sh
+      - package-lock.json
+      - .github/workflows/selfhost.yml
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  compose-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - run: npx prisma generate
+
+      # docs/self-host.md, step 2: the example as shipped, with its own shared key.
+      - name: Configure the stack from the example
+        run: |
+          cp .env.selfhost.example .env
+          sed -i 's/^GRAPHITI_SERVICE_API_KEY=.*/GRAPHITI_SERVICE_API_KEY=ci-selfhost/' .env
+          docker compose config --quiet
+
+      # Everything that needs the internet happens here, before the egress rule exists.
+      - name: Build the memory service image and pull the others
+        run: |
+          docker compose build
+          docker compose pull postgres neo4j
+
+      - name: Drop and count container connections that leave the Docker network
+        run: |
+          docker compose create
+          subnet="$(docker network inspect willder_default --format '{{(index .IPAM.Config 0).Subnet}}')"
+          echo "compose network: $subnet"
+          rule=(-s "$subnet" ! -d "$subnet" -m conntrack --ctstate NEW -m comment --comment selfhost-egress)
+          sudo iptables -I DOCKER-USER 1 "${rule[@]}" -j DROP
+          sudo iptables -I DOCKER-USER 1 "${rule[@]}" -j LOG --log-prefix "selfhost-egress: "
+          sudo iptables -L DOCKER-USER -nv
+
+      # docs/self-host.md, step 3.
+      - name: Start the stack
+        run: docker compose up -d --wait --wait-timeout 300
+
+      # docs/self-host.md, steps 4 and 5. Every Node process from here on, npx and npm
+      # included, preloads the smoke's egress guard and records any host but this machine.
+      - name: Migrate, then mint a token and export a scope as the docs say
+        env:
+          NODE_OPTIONS: --import=file://${{ github.workspace }}/scripts/lib/egress-guard.mjs
+          SELFHOST_EGRESS_ALLOW: localhost,127.0.0.1
+          SELFHOST_EGRESS_LOG: ${{ runner.temp }}/host-egress.jsonl
+        run: |
+          set -o pipefail
+          npx prisma migrate deploy
+          npm run --silent selfhost:token -- --scope team --agent ci-agent | sed 's/wcap_[A-Za-z0-9_-]*/wcap_<redacted>/'
+          npm run --silent selfhost:export -- --scope team --out "$RUNNER_TEMP/team.jsonl"
+          head -n 1 "$RUNNER_TEMP/team.jsonl"
+
+      - name: npm run selfhost:smoke
+        env:
+          NODE_OPTIONS: --import=file://${{ github.workspace }}/scripts/lib/egress-guard.mjs
+          SELFHOST_EGRESS_ALLOW: localhost,127.0.0.1
+          SELFHOST_EGRESS_LOG: ${{ runner.temp }}/host-egress.jsonl
+        run: npm run --silent selfhost:smoke
+
+      - name: No host-side process reached outside this machine
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/host-egress.jsonl"
+          if [ -s "$log" ]; then echo "refused host-side connections:"; cat "$log"; exit 1; fi
+          echo "host-side connections refused: none"
+
+      - name: No container reached outside the Docker network
+        if: always()
+        run: |
+          dropped() { sudo iptables -L DOCKER-USER -nvx | awk '/selfhost-egress/ && $3 == "DROP" { print $1 }'; }
+          sudo iptables -L DOCKER-USER -nvx
+          echo "connections dropped while the stack ran: $(dropped)"
+          sudo dmesg | grep 'selfhost-egress:' || true
+          [ "$(dropped)" = "0" ]
+          # The control: a connection a container opens on purpose (to a TEST-NET address,
+          # RFC 5737, which reaches nothing) must be counted, or a zero above means nothing.
+          if docker compose exec -T memory-service python -c "import socket; socket.create_connection(('192.0.2.1', 443), timeout=3)"; then
+            echo "the control connection was not dropped" >&2; exit 1
+          fi
+          echo "connections dropped after the control: $(dropped)"
+          [ "$(dropped)" -ge 1 ]
+
+      - name: The stack's logs
+        if: failure()
+        run: docker compose logs --no-color

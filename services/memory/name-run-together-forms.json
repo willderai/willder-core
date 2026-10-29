@@ -1,0 +1,328 @@
+{
+  "$comment": [
+    "Names a login, a handle, a file name or a link writes without spaces, as a person erasure must read them in every engine: JavaScript and Postgres (services/memory/person-name-characters.ts: asciiSpelling, joinedNames, concatenatedNames, markWordSteps) and the graph's Cypher (memory-service/app/graphiti_client.py: _ascii_spelling, _joined_parts_all, _concatenated_forms, _marked).",
+    "people: the people erased. cases: text filed under a record named `name` ('Pricing' when absent), and whether erasing every person removes it.",
+    "Read by services/memory/erasure-rule-agreement.realdb.test.ts (the erasure and its suppression digests) and memory-service/tests/test_person_erasure_integration.py (the graph). Every engine must decide each case as `expected`. A case marked over-erasure erases a bystander, accepted as missing the person is worse."
+  ],
+  "people": [
+    { "id": "forms-maria", "name": "María López-García", "email": "mlg@forms.example" },
+    { "id": "forms-kim", "name": "Kim Ji-woo", "email": "kjw@forms.example" },
+    { "id": "forms-hans", "name": "Hans Weiß", "email": "hw@forms.example" },
+    { "id": "forms-ayse", "name": "Ayşe Yılmaz", "email": "ay@forms.example" },
+    { "id": "forms-zoe", "name": "Zoë Ferrand", "email": "zf@forms.example" },
+    { "id": "forms-dana", "name": "Dana Whitfield", "email": "dw@forms.example" },
+    { "id": "forms-siobhan", "name": "Siobhan O'Brien", "email": "sob@forms.example" },
+    { "id": "forms-amy", "name": "Amy Chen", "email": "ac@forms.example" },
+    { "id": "forms-tom", "name": "Tom Lee", "email": "tl@forms.example" },
+    { "id": "forms-ann", "name": "Ann Li", "email": "anl@forms.example" },
+    { "id": "forms-pat", "name": "Pat Ron", "email": "pr@forms.example" },
+    { "id": "forms-anne", "name": "Anne-Marie Dupont", "email": "amd@forms.example" },
+    { "id": "forms-al2", "name": "Al2 Bo", "email": "a2b@forms.example" },
+    { "id": "forms-bo2", "name": "Bo 2al", "email": "b2a@forms.example" },
+    { "id": "forms-lucja", "name": "\u0141ucja Nowak", "email": "ln@forms.example" },
+    { "id": "forms-zoeann", "name": "Zo\u00eb\u2011Ann Lee", "email": "zal@forms.example" },
+    { "id": "forms-habib", "name": "\u0126abib \u0120or\u0121", "email": "hg@forms.example" },
+    { "id": "forms-albert", "name": "Al Bert-Smith", "email": "abs@forms.example" },
+    { "id": "forms-kit", "name": "Kit Chen", "email": "kc@forms.example" },
+    { "id": "forms-win", "name": "Win Dow", "email": "wd@forms.example" }
+  ],
+  "cases": [
+    { "label": "her accent left off, run together", "content": "Ping @zoeferrand about it.", "expected": "erased" },
+    {
+      "label": "her accent left off, joined by an underscore",
+      "content": "Attached zoe_ferrand.pdf.",
+      "expected": "erased"
+    },
+    { "label": "a sharp s as ss, with spaces", "content": "Hans Weiss signed the order.", "expected": "erased" },
+    { "label": "a sharp s as ss, run together", "content": "Login: hansweiss", "expected": "erased" },
+    {
+      "label": "a cedilla and a dotless i left off, run together",
+      "content": "Login: ayseyilmaz",
+      "expected": "erased"
+    },
+    {
+      "label": "her accent left off, a record's name",
+      "name": "zoeferrand",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    { "label": "a longer word after her ASCII spelling", "content": "Login: hansweisser", "expected": "kept" },
+    {
+      "label": "run together up to her hyphen",
+      "content": "Send it to marialopez-garcia today.",
+      "expected": "erased"
+    },
+    { "label": "run together across her hyphen", "content": "Attached maria_lopezgarcia.pdf.", "expected": "erased" },
+    { "label": "run together up to her hyphen, a short name", "content": "Login: kimji-woo", "expected": "erased" },
+    {
+      "label": "run together up to her hyphen, in camel case",
+      "content": "Attached KimJi-woo.pdf.",
+      "expected": "erased"
+    },
+    {
+      "label": "run together up to her hyphen, a record's name",
+      "name": "kimji-woo",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    {
+      "label": "run together across her hyphen, a record's name",
+      "name": "maria_lopezgarcia",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    {
+      "label": "run together up to her hyphen, a longer surname after a dash",
+      "content": "Login: kimji-woo-park",
+      "expected": "kept"
+    },
+    {
+      "label": "hyphens alone where she has whitespace, across her hyphen",
+      "content": "Login: maria-lopezgarcia",
+      "expected": "kept"
+    },
+    {
+      "label": "her hyphenated given name run together, another person's name in prose",
+      "content": "Annemarie Dupont signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "over-erasure: her hyphenated given name run together, in a file name",
+      "content": "Attached annemarie_dupont.pdf.",
+      "expected": "erased"
+    },
+    {
+      "label": "her words run together up to her hyphen, another person's name in prose",
+      "content": "Albert Smith signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "over-erasure: her words run together up to her hyphen, in a login",
+      "content": "Login: albert_smith",
+      "expected": "erased"
+    },
+    {
+      "label": "her words run together up to her hyphen, spaced in a link",
+      "content": "Open /files/Albert%20Smith.pdf",
+      "expected": "kept"
+    },
+    {
+      "label": "her words run together up to her hyphen, spaced before a camel-case step",
+      "content": "Attached Albert SmithReport.pdf",
+      "expected": "kept"
+    },
+    {
+      "label": "her accent left off, with her non-breaking hyphen as -",
+      "content": "Attached zoe-ann_lee.pdf.",
+      "expected": "erased"
+    },
+    {
+      "label": "her accent left off, with her non-breaking hyphen as -, with spaces",
+      "content": "Zoe-Ann Lee signed the order.",
+      "expected": "erased"
+    },
+    { "label": "a stroked h and dotted g left off", "content": "Habib Gorg signed the order.", "expected": "erased" },
+    {
+      "label": "digits before her name run together",
+      "content": "Attached 2026danawhitfield.pdf.",
+      "expected": "erased"
+    },
+    { "label": "digits before her name, then a space", "content": "File 2026Dana Whitfield.pdf", "expected": "erased" },
+    {
+      "label": "digits before her name in lower case, then a space",
+      "content": "File 2026dana whitfield",
+      "expected": "erased"
+    },
+    {
+      "label": "a quarter before a short name, then a space",
+      "content": "Q3Tom Lee signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "digits before a capital outside the camel-case letters",
+      "content": "File 2026\u0141ucjaNowak.pdf",
+      "expected": "erased"
+    },
+    {
+      "label": "digits before her name run together, a letter outside the camel-case letters",
+      "content": "File 2026\u0142ucjanowak.pdf",
+      "expected": "erased"
+    },
+    {
+      "label": "a word of hers starting with a digit, after a capital step",
+      "content": "File Bo2al.pdf",
+      "expected": "erased"
+    },
+    {
+      "label": "digits before her name joined by an underscore",
+      "content": "Attached 2026dana_whitfield.pdf.",
+      "expected": "erased"
+    },
+    { "label": "letters and digits before her name", "content": "Attached v2danawhitfield.pdf.", "expected": "erased" },
+    {
+      "label": "a word of hers ending in a digit, then a capital, missed by every engine",
+      "content": "Attached Al2Bo.pdf.",
+      "expected": "kept"
+    },
+    { "label": "digits before a short name run together", "content": "Attached 2026annli.pdf.", "expected": "kept" },
+    {
+      "label": "a link's %27 for her apostrophe, joined by an underscore",
+      "content": "Open siobhan_o%27brien.pdf.",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %27 for her apostrophe, with %20 for the space",
+      "content": "Open /files/Siobhan%20O%27Brien.pdf",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %27 for her apostrophe, with a space",
+      "content": "Siobhan O%27Brien signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %27 for her apostrophe, run together",
+      "content": "Open /u/siobhano%27brien",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %E2%80%99 for her curly apostrophe, joined by an underscore",
+      "content": "Open siobhan_o%E2%80%99brien.pdf.",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %e2%80%99 for her curly apostrophe, in lower case, run together",
+      "content": "Open /u/siobhano%e2%80%99brien",
+      "expected": "erased"
+    },
+    {
+      "label": "a link's %E2%80%99 for her curly apostrophe, with %20 for the space",
+      "content": "Open /files/Siobhan%20O%E2%80%99Brien.pdf",
+      "expected": "erased"
+    },
+    { "label": "a seven-letter name run together", "content": "Ping @amychen about it.", "expected": "erased" },
+    {
+      "label": "a six-letter name run together, bare as a word, under the prose floor",
+      "content": "Login: tomlee",
+      "expected": "kept"
+    },
+    {
+      "label": "a six-letter name run together, before an @",
+      "content": "Mail tomlee@corp.example today.",
+      "expected": "erased"
+    },
+    {
+      "label": "a six-letter name run together in a file name, missed: the cost of reading short runs beside an @ only",
+      "content": "Attached tomlee_cv.pdf.",
+      "expected": "kept"
+    },
+    {
+      "label": "a six-letter name run together after digits, missed: the cost of reading short runs beside an @ only",
+      "content": "File 2026tomlee",
+      "expected": "kept"
+    },
+    {
+      "label": "a six-letter name run together, a record's name",
+      "name": "TomLee",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    {
+      "label": "a five-letter name run together, under the floor",
+      "content": "Attached annli_notes.pdf.",
+      "expected": "kept"
+    },
+    {
+      "label": "a six-letter word spelled as her name run together, in prose",
+      "content": "The patron signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "a common word spelled as her short name run together, in prose (Kit Chen: 132 of 13,129 ordinary records held \"kitchen\")",
+      "content": "Coffee is in the kitchen.",
+      "expected": "kept"
+    },
+    { "label": "a short run together, before an @", "content": "Mail kitchen@x.example today.", "expected": "erased" },
+    { "label": "a short run together, after an @", "content": "Ping @kitchen about it.", "expected": "erased" },
+    {
+      "label": "a short run together before an underscore, missed: code writes words so",
+      "content": "Login: kitchen_ops",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together after a slash, missed: prose joins words with one too",
+      "content": "Open /u/kitchen",
+      "expected": "kept"
+    },
+    { "label": "a short run together after digits, missed", "content": "File 2026kitchen", "expected": "kept" },
+    {
+      "label": "a short run together before a digit, missed: code writes words so",
+      "content": "Login: kitchen2",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together before a dot and a letter, missed",
+      "content": "Saved kitchen.pdf today.",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together after a letter and a dot, missed",
+      "content": "Saved notes.kitchen today.",
+      "expected": "kept"
+    },
+    { "label": "a short name joined by a dot", "content": "Login: kit.chen", "expected": "erased" },
+    { "label": "a short name in camel case", "content": "Login: KitChen", "expected": "erased" },
+    { "label": "a short run together, a record's name", "name": "kitchen", "content": "Notes.", "expected": "erased" },
+    {
+      "label": "a short run together in prose, capitalized, before a comma",
+      "content": "Kitchen, then the hall.",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together in prose, after an ellipsis with no space",
+      "content": "And then...kitchen, then the hall.",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together in prose, joined to another word by a slash",
+      "content": "Clean the kitchen/dining room.",
+      "expected": "kept"
+    },
+    {
+      "label": "a common word spelled as her short name run together, in prose (Win Dow: 779 of 13,129 ordinary records held \"window\")",
+      "content": "Open the window, please.",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together, after an @ (Win Dow)",
+      "content": "Ping @window about it.",
+      "expected": "erased"
+    },
+    { "label": "a short name in camel case (Win Dow)", "content": "Login: winDow", "expected": "erased" },
+    {
+      "label": "a short run together before an underscore, missed (Win Dow)",
+      "content": "Login: window_ops",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together before a dot and a letter, missed (Win Dow)",
+      "content": "Saved window.cfg today.",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together before a digit, missed (Win Dow)",
+      "content": "Login: window7",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together as a member of a dotted code identifier (Win Dow: 113 of 14,657 third-party code records)",
+      "content": "const q = window.location.search;",
+      "expected": "kept"
+    },
+    {
+      "label": "a short run together as the head of a snake_case code identifier (Win Dow)",
+      "content": "Reset window_start before the next batch.",
+      "expected": "kept"
+    }
+  ]
+}

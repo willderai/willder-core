@@ -1,0 +1,56 @@
+.host {
+  display: contents;
+}
+
+@media (max-width: 767px) {
+  /* Reserve only the icon rail. Expanding overlays the page instead of
+     squeezing the workspace down to an unusable sliver. */
+  .host {
+    position: relative;
+    display: block;
+    width: 4.5rem;
+    flex-shrink: 0;
+  }
+
+  .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 50;
+  }
+
+  /* This applies to server HTML before matchMedia hydrates, so the initial
+     phone layout has the same width and labels as the hydrated icon rail. */
+  .sidebar[data-mode="auto"] {
+    width: 4.5rem;
+  }
+
+  .sidebar[data-mode="auto"] [data-nav-full] {
+    display: none;
+  }
+
+  .sidebar[data-mode="auto"] [data-nav-compact] {
+    display: flex;
+  }
+
+  .sidebar[data-mode="auto"] [data-nav-logo],
+  .sidebar[data-mode="auto"] [data-nav-link],
+  .sidebar[data-mode="auto"] [data-nav-user] {
+    justify-content: center;
+    padding-inline: 0;
+    gap: 0;
+  }
+
+  .sidebar[data-mode="auto"] [data-nav-scroll],
+  .sidebar[data-mode="auto"] [data-nav-controls] {
+    padding-inline: 0.5rem;
+  }
+
+  /* The expanded sidebar lays its icon controls in a row; the rail stacks them. */
+  .sidebar[data-mode="auto"] [data-nav-controls] {
+    flex-direction: column;
+  }
+
+  .sidebar[data-mode="auto"] :global(.cl-userButtonOuterIdentifier) {
+    display: none;
+  }
+}

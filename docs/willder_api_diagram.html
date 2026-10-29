@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Willder — API Routes Map</title>
+    <style>
+      :root {
+        --get: #2f9e6e;
+        --post: #2f6fe0;
+        --patch: #c98a16;
+        --del: #d24a4a;
+        --ink: #27303a;
+        --muted: #5b6675;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 34px 22px 64px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+        background: #f6f8fb;
+        color: var(--ink);
+      }
+      h1 {
+        text-align: center;
+        font-size: 23px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 26px;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      /* request lifecycle */
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: #fff;
+        border: 1px solid #e3e8ef;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 8px;
+        box-shadow: 0 2px 10px rgba(20, 30, 50, 0.05);
+      }
+      .step {
+        background: #eef2f8;
+        border: 1px solid #d6deea;
+        border-radius: 9px;
+        padding: 7px 11px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .step.gate {
+        background: #fdeaea;
+        border-color: #e7a9a9;
+      }
+      .step.async {
+        background: #f1e8fb;
+        border-color: #cdb3e6;
+      }
+      .chev {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .flow-note {
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--muted);
+        margin: 0 0 26px;
+      }
+
+      .legend {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        margin-bottom: 22px;
+        flex-wrap: wrap;
+      }
+      .legend span {
+        font-size: 11.5px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .m {
+        font-size: 10px;
+        font-weight: 800;
+        color: #fff;
+        border-radius: 5px;
+        padding: 2px 6px;
+        letter-spacing: 0.4px;
+      }
+      .GET {
+        background: var(--get);
+      }
+      .POST {
+        background: var(--post);
+      }
+      .PATCH {
+        background: var(--patch);
+      }
+      .DELETE {
+        background: var(--del);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        gap: 14px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e3e8ef;
+        border-radius: 13px;
+        padding: 14px 15px;
+        box-shadow: 0 1px 4px rgba(20, 30, 50, 0.05);
+      }
+      .card h3 {
+        margin: 0 0 3px;
+        font-size: 13.5px;
+      }
+      .card .svc {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 0 0 10px;
+      }
+      .ep {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-top: 1px dashed #eef1f6;
+        font-size: 12.5px;
+      }
+      .ep:first-of-type {
+        border-top: none;
+      }
+      .path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.8px;
+        color: var(--ink);
+      }
+      .tag {
+        font-size: 9.5px;
+        font-weight: 700;
+        border-radius: 5px;
+        padding: 1px 6px;
+        margin-left: auto;
+      }
+      .tag.async {
+        background: #f1e8fb;
+        color: #7a4fb0;
+      }
+      .tag.gate {
+        background: #fdeaea;
+        color: #c0392b;
+      }
+      .tag.in {
+        background: #e8f5ee;
+        color: #1f8a55;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Willder — API Routes Map</h1>
+      <p class="sub">Next.js route handlers, grouped by resource. Every route is tenant-scoped + access-checked.</p>
+
+      <!-- request lifecycle -->
+      <div class="flow">
+        <span class="step">Client</span><span class="chev">→</span> <span class="step">Clerk auth</span
+        ><span class="chev">→</span> <span class="step gate">Access check · check()</span><span class="chev">→</span>
+        <span class="step">Route handler</span><span class="chev">→</span> <span class="step">Service</span
+        ><span class="chev">→</span> <span class="step">Neon / Neo4j / Cache</span><span class="chev">→</span>
+        <span class="step">Response</span>
+      </div>
+      <p class="flow-note">
+        Long ops (<span style="color: #7a4fb0">async ↻</span>) hand off to <b>Inngest</b> and return a job id → poll
+        <code>/api/runs/:id</code>. Inbound events arrive at <b>/api/webhooks</b>.
+      </p>
+
+      <div class="legend">
+        <span><b class="m GET">GET</b> read</span>
+        <span><b class="m POST">POST</b> create / action</span>
+        <span><b class="m PATCH">PATCH</b> update</span>
+        <span><b class="m DELETE">DELETE</b> remove</span>
+        <span><b class="tag async">↻ async</b></span>
+        <span><b class="tag gate">memory gate</b></span>
+        <span><b class="tag in">inbound</b></span>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Auth &amp; Org</h3>
+          <p class="svc">→ Clerk / app context</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/me</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/org</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/org</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Integrations</h3>
+          <p class="svc">→ Integrations service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/integrations</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/integrations/:provider/connect</span></div>
+          <div class="ep"><b class="m DELETE">DELETE</b><span class="path">/api/integrations/:id</span></div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/integrations/:id/sync</span
+            ><span class="tag async">↻</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Memory</h3>
+          <p class="svc">→ Memory service (Graphiti) · gated by Access Control</p>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/memory/ingest</span><span class="tag async">↻</span>
+          </div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/memory/query</span><span class="tag gate">gate</span>
+          </div>
+          <div class="ep">
+            <b class="m GET">GET</b><span class="path">/api/memory/entities/:id</span><span class="tag gate">gate</span>
+          </div>
+          <div class="ep">
+            <b class="m GET">GET</b><span class="path">/api/memory/facts</span><span class="tag gate">gate</span>
+          </div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/memory/facts/:id</span></div>
+          <div class="ep"><b class="m DELETE">DELETE</b><span class="path">/api/memory/facts/:id</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Accounts &amp; Contacts</h3>
+          <p class="svc">→ CRM (Postgres) + Memory link</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/accounts</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/accounts</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/accounts/:id</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/accounts/:id</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/contacts</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/contacts</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/contacts/:id</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/contacts/:id</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Campaigns</h3>
+          <p class="svc">→ Outbound service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/campaigns</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/campaigns</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/campaigns/:id</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/campaigns/:id</span></div>
+          <div class="ep"><b class="m DELETE">DELETE</b><span class="path">/api/campaigns/:id</span></div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/campaigns/:id/start</span><span class="tag async">↻</span>
+          </div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/campaigns/:id/pause</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/campaigns/:id/prospects</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/campaigns/:id/prospects</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Drafts — Approval Inbox</h3>
+          <p class="svc">→ Outbound service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/drafts</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/drafts/:id</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/drafts/:id</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/drafts/:id/approve</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/drafts/:id/send</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/drafts/:id/reject</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Conversations</h3>
+          <p class="svc">→ Outbound service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/conversations</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/conversations/:id</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/conversations/:id/reply</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Agents</h3>
+          <p class="svc">→ Agent Orchestration (Inngest)</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/agents</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/agents</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/agents/:id</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/agents/:id</span></div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/agents/:id/run</span><span class="tag async">↻</span>
+          </div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/agents/:id/runs</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/runs/:id</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Access Control</h3>
+          <p class="svc">→ Access Control service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/access/scopes</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/access/grants</span></div>
+          <div class="ep"><b class="m DELETE">DELETE</b><span class="path">/api/access/grants/:id</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/access/capabilities</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/audit</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Billing</h3>
+          <p class="svc">→ Billing service (Stripe)</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/billing</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/billing/checkout</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/billing/portal</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/billing/usage</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Team &amp; Settings</h3>
+          <p class="svc">→ Settings service</p>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/users</span></div>
+          <div class="ep"><b class="m POST">POST</b><span class="path">/api/users/invite</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/users/:id</span></div>
+          <div class="ep"><b class="m DELETE">DELETE</b><span class="path">/api/users/:id</span></div>
+          <div class="ep"><b class="m GET">GET</b><span class="path">/api/settings</span></div>
+          <div class="ep"><b class="m PATCH">PATCH</b><span class="path">/api/settings</span></div>
+        </div>
+
+        <div class="card">
+          <h3>Webhooks</h3>
+          <p class="svc">inbound events → Services</p>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/webhooks/unipile</span><span class="tag in">in</span>
+          </div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/webhooks/stripe</span><span class="tag in">in</span>
+          </div>
+          <div class="ep">
+            <b class="m POST">POST</b><span class="path">/api/webhooks/clerk</span><span class="tag in">in</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

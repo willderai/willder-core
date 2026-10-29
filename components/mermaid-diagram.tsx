@@ -1,0 +1,81 @@
+"use client";
+
+// Renders a Mermaid diagram source string to inline SVG on the client. Mermaid is a
+// heavy, browser-only lib (it touches document during render), so it is dynamically
+// imported inside an effect to avoid SSR. Render failures never break the page: on
+// error we fall back to the raw source in a <pre> so a malformed diagram is still
+// readable. Mermaid draws with its dark theme, so the frame keeps a dark well in both themes.
+
+import { useEffect, useId, useRef, useState } from "react";
+
+type Status = "loading" | "ok" | "error";
+
+export function MermaidDiagram({ chart, className }: { chart: string; className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<Status>("loading");
+  // useId is stable across renders + unique per instance; strip the colons React uses
+  // so the result is a valid DOM/CSS id for mermaid.render.
+  const rawId = useId();
+  const domId = `mermaid-${rawId.replace(/[^a-zA-Z0-9-_]/g, "")}`;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function render() {
+      setStatus("loading");
+      try {
+        const mermaid = (await import("mermaid")).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          securityLevel: "loose",
+        });
+        const { svg } = await mermaid.render(domId, chart);
+        if (cancelled) return;
+        if (containerRef.current) {
+          containerRef.current.innerHTML = svg;
+        }
+        setStatus("ok");
+      } catch {
+        if (cancelled) return;
+        setStatus("error");
+      }
+    }
+
+    if (chart && chart.trim()) {
+      void render();
+    } else {
+      setStatus("error");
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chart, domId]);
+
+  if (status === "error") {
+    return (
+      <pre
+        className={`mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl border border-divider bg-fg/[0.04] p-3 font-mono text-xs leading-relaxed text-fg-muted ${
+          className ?? ""
+        }`}
+      >
+        {chart}
+      </pre>
+    );
+  }
+
+  return (
+    <div
+      className={`mt-3 overflow-x-auto rounded-xl border border-divider bg-[#001914] p-3 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full ${
+        className ?? ""
+      }`}
+    >
+      {/* The diagram's ground is forest in both themes, so its skeleton is too: ivory at 10% over it, written solid. */}
+      {status === "loading" && (
+        <div className="h-24 w-full rounded-lg bg-[#182e29] motion-safe:animate-pulse" aria-hidden />
+      )}
+      <div ref={containerRef} aria-hidden={status !== "ok"} />
+    </div>
+  );
+}

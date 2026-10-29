@@ -1,0 +1,12 @@
+-- A user records whether Clerk verified the email address Willder stores for them.
+--
+-- Source-connect widening matches the people who can read a scope to a source's
+-- sharing list by email. Without this column an unverified address that happened to
+-- equal a source reader's counted as "already reads the source", which reported the
+-- widening too low. Only a verified address may match now.
+--
+-- Additive, nullable, no default and no backfill. Existing users carry null, meaning
+-- "not known", which the widening check treats exactly like unverified: the safe
+-- direction, over-warning rather than under-reporting. lib/tenant.ts fills it on the
+-- user's next sign-in and the Clerk webhook on user.created / user.updated.
+ALTER TABLE "users" ADD COLUMN "emailVerified" BOOLEAN;

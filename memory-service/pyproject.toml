@@ -1,0 +1,5 @@
+# Tooling config for the memory service. Dependencies live in requirements*.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"

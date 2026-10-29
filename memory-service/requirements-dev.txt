@@ -1,0 +1,5 @@
+# Test/dev deps for the memory service. Install: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8
+httpx>=0.27
+ruff==0.6.9

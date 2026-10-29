@@ -1,0 +1,509 @@
+@import "tailwindcss";
+
+/* next-themes toggles a literal `.dark`/`.light` class on <html> (see
+   components/theme-provider.tsx); Tailwind v4's `dark:` variant defaults to
+   `prefers-color-scheme` instead, so without this override `dark:` utilities
+   silently track the OS theme and ignore the in-app toggle. This is what was
+   letting the wordmark swap render the wrong logo variant in light mode. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Forest foundation, ivory typography, ice actions, sunset signals.
+     Legacy utility names stay compatible with existing product components. */
+  --color-ink: #001914;
+  --color-marble: #efefe9;
+  --color-surface: #0a2721;
+  --color-gunpowder: #23483f;
+  --color-gold: #c9fcfc;
+  --color-ember: #f59b76;
+  --color-brick: #ef968d;
+  --color-stone: #d7d4ca;
+  --color-ice: #c9fcfc;
+  --color-sunset: #f59b76;
+
+  /* Semantic roles for product UI. Each follows the theme property that
+     already carries the meaning, so light and dark stay in step. */
+  --color-accent: var(--accent);
+  --color-action: var(--accent);
+  --color-action-foreground: var(--accent-foreground);
+  --color-info: var(--focus);
+  --color-info-foreground: var(--background);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-panel: var(--surface-tertiary);
+  --color-overlay: var(--overlay);
+  --color-divider: var(--separator);
+
+  /* Three text roles, solid colors chosen for AA contrast on the forest,
+     card and panel surfaces in dark mode, the stone surfaces in light mode,
+     and the darkest corner of the app backdrop in both
+     (app/theme-contrast.test.ts). They replace opacity steps of marble, which
+     drifted between pages and each needed its own light-mode override;
+     app/theme-roles.test.ts keeps those steps from coming back. */
+  --color-fg: var(--foreground);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+
+  /* Type steps the default Tailwind scale lacks. Hero sizes use text-4xl,
+     text-5xl and text-6xl (36/48/60px, claude/design.md section 3). */
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--line-height: 1rem;
+  --text-eyebrow--letter-spacing: 0.14em;
+  --text-display-sm: 2rem;
+  --text-display-sm--line-height: 1.15;
+  --text-display-md: 2.5rem;
+  --text-display-md--line-height: 1.1;
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root,
+.dark {
+  color-scheme: dark;
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-geist-mono);
+  --background: #001914;
+  --foreground: #efefe9;
+  --surface: rgba(0, 25, 20, 0.46);
+  --surface-foreground: var(--foreground);
+  --surface-secondary: rgba(10, 39, 33, 0.6);
+  --surface-secondary-foreground: var(--foreground);
+  --surface-tertiary: #12372e;
+  --surface-tertiary-foreground: var(--foreground);
+  --overlay: #10372e;
+  --overlay-foreground: var(--foreground);
+  --brand-muted: #d4d4cd;
+  --muted: var(--brand-muted);
+  --fg-muted: #d4d4cd;
+  --fg-subtle: #a8b8ae;
+  --default: #21463c;
+  --default-foreground: var(--foreground);
+  --accent: #c9fcfc;
+  --accent-foreground: #001914;
+  --secondary: #f59b76;
+  --secondary-foreground: #001914;
+  --warning: #f3c480;
+  --warning-foreground: #001914;
+  --danger: #ef968d;
+  --danger-foreground: #30110d;
+  --success: #a6d4b4;
+  --success-foreground: #001914;
+  --focus: #a7dfe6;
+  --link: #c9fcfc;
+  --border: rgba(215, 212, 202, 0.18);
+  --separator: rgba(215, 212, 202, 0.12);
+  --segment: #285447;
+  --segment-foreground: var(--foreground);
+  --field-background: rgba(0, 25, 20, 0.52);
+  --field-hover: rgba(16, 55, 46, 0.72);
+  /* A field's border is the only edge that shows where it is, so it holds 3:1
+     against the forest, card, panel and overlay surfaces and against the field's
+     own fill (WCAG 1.4.11): 3.67:1 at worst here, 3.42:1 in light mode. */
+  --field-border: #7a8c84;
+  --field-border-hover: #a8b8ae;
+  --field-border-focus: #a7dfe6;
+  --field-border-width: 1px;
+  --field-foreground: var(--foreground);
+  --field-placeholder: #a8b8ae;
+  --glass-fill: linear-gradient(120deg, rgba(10, 39, 33, 0.46), rgba(0, 25, 20, 0.4));
+  --glass-edge: rgba(215, 212, 202, 0.17);
+  --glass-shadow: 0 20px 56px -30px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(239, 239, 233, 0.045);
+  --heading-shadow: 0 -0.5px 0 rgba(255, 255, 247, 0.22), 0 1px 1px rgba(0, 12, 9, 0.55), 0 3px 8px rgba(0, 10, 8, 0.24),
+    0 0 16px rgba(239, 239, 233, 0.04);
+  --texture-strength: 1;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-marble);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/* A fine upper edge and soft lower shadow give display type stone-like relief.
+   Keep the ivory fill solid so the letterforms stay crisp at mobile sizes. */
+h1.font-display,
+h2.font-display {
+  text-shadow: var(--heading-shadow);
+}
+
+.glass-surface {
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-fill);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.08);
+  backdrop-filter: blur(10px) saturate(1.08);
+}
+
+/* Landing page: lighter glass, so the shader reads through the panels. The extra blur keeps
+   text inside a panel readable where a bright ribbon passes behind it. */
+[data-marketing-page] .glass-surface {
+  --glass-fill: linear-gradient(120deg, rgba(10, 39, 33, 0.26), rgba(0, 25, 20, 0.22));
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+.light [data-marketing-page] .glass-surface {
+  --glass-fill: linear-gradient(120deg, rgba(239, 239, 233, 0.42), rgba(215, 212, 202, 0.34));
+}
+
+[data-brand-shader] {
+  opacity: 0.48;
+  mix-blend-mode: screen;
+}
+/* The landing page shows the shader a little stronger than the product (0.48). */
+[data-marketing-page] [data-brand-shader] {
+  opacity: 0.6;
+}
+.light [data-brand-shader] {
+  opacity: 0.12;
+  mix-blend-mode: multiply;
+}
+
+/* One live grain layer keeps panel and page texture continuous. Product
+   screens reduce it so charts, fields, and dense data remain comfortable. */
+:root:has([data-app-shell]) {
+  --texture-strength: 0.5;
+}
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  opacity: calc(0.1 * var(--texture-strength));
+  mix-blend-mode: soft-light;
+}
+.light .grain-overlay {
+  opacity: calc(0.05 * var(--texture-strength));
+  mix-blend-mode: multiply;
+}
+
+/* The same materials in daylight: stone surfaces, forest text, deep teal
+   actions. Darker accents keep links and filled buttons readable on stone.
+   Ember and brick are dark enough for 4.5:1 text on the faintly tinted
+   panels inside cards, not only on the bare page. */
+.light {
+  color-scheme: light;
+  --color-ink: #d7d4ca;
+  --color-marble: #001914;
+  --color-surface: #e5e3da;
+  --color-gunpowder: #536a60;
+  --color-gold: #245b64;
+  --color-ember: #883d25;
+  --color-brick: #962d27;
+  --background: #d7d4ca;
+  --foreground: #001914;
+  --surface: rgba(239, 239, 233, 0.55);
+  --surface-secondary: rgba(215, 212, 202, 0.72);
+  --surface-tertiary: #cacbc0;
+  --overlay: #e5e3da;
+  --brand-muted: #505e55;
+  --muted: var(--brand-muted);
+  --fg-muted: #34443b;
+  --fg-subtle: #405245;
+  --default: #c4c9be;
+  --accent: #245b64;
+  --accent-foreground: #efefe9;
+  --secondary: #883d25;
+  --secondary-foreground: #efefe9;
+  --warning: #855517;
+  --warning-foreground: #efefe9;
+  --danger: #962d27;
+  --danger-foreground: #efefe9;
+  --success: #2c6643;
+  --success-foreground: #efefe9;
+  --focus: #245b64;
+  --link: #245b64;
+  --border: rgba(0, 25, 20, 0.22);
+  --separator: rgba(0, 25, 20, 0.14);
+  --segment: #efefe9;
+  --field-background: rgba(239, 239, 233, 0.65);
+  --field-hover: #e5e3da;
+  --field-border: #5a695f;
+  --field-border-hover: #34443b;
+  --field-border-focus: #245b64;
+  --field-foreground: #001914;
+  --field-placeholder: #4a5a4f;
+  --glass-fill: linear-gradient(120deg, rgba(239, 239, 233, 0.58), rgba(215, 212, 202, 0.48));
+  --glass-edge: rgba(0, 25, 20, 0.17);
+  --glass-shadow: 0 20px 56px -30px rgba(0, 25, 20, 0.18), inset 0 1px 0 rgba(239, 239, 233, 0.5);
+  --heading-shadow: 0 -0.5px 0 rgba(255, 255, 247, 0.32), 0 1px 1px rgba(0, 25, 20, 0.12),
+    0 2px 5px rgba(0, 25, 20, 0.08);
+}
+
+/* Native fields. The light-mode defaults sit in the base layer so a field's
+   own utilities (bg-*, border-*, text-*) win; as an unlayered rule they
+   outranked every utility and the field tokens never applied in light mode.
+   Checkboxes, radios and sliders keep their native drawing. */
+@layer base {
+  .light :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), textarea, select) {
+    background-color: var(--field-background);
+    color: var(--field-foreground);
+    border-color: var(--field-border);
+  }
+}
+
+/* One placeholder colour for every field in both themes, 4.6:1 or better on
+   the field fill. Unlayered on purpose: it outranks every Tailwind utility,
+   so no field can set a fainter one with a class. */
+:where(input, textarea)::placeholder {
+  color: var(--field-placeholder);
+}
+
+/* System contrast colors take precedence over decorative depth. */
+@media (forced-colors: active) {
+  h1.font-display,
+  h2.font-display {
+    text-shadow: none;
+  }
+}
+
+/* Landing page. The silk shader shows behind the whole page, with no dark layer over it.
+   Text set straight on the shader would fall below 4.5:1 wherever a bright ribbon passes
+   behind it, so text outside the glass panels carries a tight ink shadow instead: it darkens
+   only the edge of each letter, with no glow, and the shader stays visible everywhere else.
+   The breakpoint is the shader's own, in px like the query in hooks/use-wide-viewport.ts,
+   so the two cannot drift apart when a reader enlarges the default font size; phones keep
+   the plain backdrop. */
+@media (min-width: 768px) {
+  :where(.landing-veil, .landing-veil-solid)
+    :where(h2, h3, p, li, summary, a, span):not([class*="bg-"], [class*="bg-"] *) {
+    text-shadow: 0 1px 2px color-mix(in srgb, var(--color-ink) 75%, transparent);
+  }
+}
+
+/* The landing nav steps aside while the launch film fills the screen (components/launch-film.tsx). */
+.landing-nav {
+  transition:
+    transform 0.35s ease,
+    opacity 0.35s ease;
+}
+html[data-film-in-view] .landing-nav:not(:focus-within) {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-nav {
+    transition: none;
+  }
+}
+
+/* The landing stats band (components/landing-stats-band.tsx): a light runs once along the panel's
+   bright top edge as the band scrolls into view. The light is a quarter of the edge wide, so
+   400% of its own width carries it the whole way across. */
+@keyframes stats-edge-sweep {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(400%);
+    opacity: 0;
+  }
+}
+.stats-edge-sweep {
+  animation: stats-edge-sweep 1.1s ease-in-out 0.1s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stats-edge-sweep {
+    animation: none;
+    opacity: 0;
+  }
+}
+/* The stat cards' line drawings (components/landing-stat-visual.tsx). The markup is the still end
+   frame; these animations run only under [data-playing], which the band sets when its intro
+   starts, and never under reduced motion or in print. A repeating drawing plays 3 cycles and
+   then rests on its end frame: nothing on the page moves for more than a few seconds. */
+[data-stat-visual] {
+  --stat-accent: var(--color-ice);
+  --stat-signal: var(--color-sunset);
+}
+.light [data-stat-visual] {
+  --stat-accent: var(--color-info);
+}
+.stat-visual-track {
+  stroke: var(--color-fg-muted);
+  opacity: 0.4;
+}
+.stat-visual-gauge,
+.stat-visual-accent {
+  stroke: var(--stat-accent);
+}
+.stat-visual-signal {
+  fill: var(--stat-signal);
+}
+.stat-visual-pulse {
+  opacity: 0;
+}
+.stat-visual-shrink {
+  transform-box: fill-box;
+  transform-origin: left;
+}
+
+[data-playing] .stat-visual-gauge {
+  animation: stat-gauge 1.2s cubic-bezier(0.22, 1, 0.36, 1) var(--stat-delay) both;
+}
+@keyframes stat-gauge {
+  from {
+    stroke-dashoffset: 80.6;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+[data-playing] .stat-visual-bounce {
+  animation: stat-bounce 4s ease-in-out calc(var(--stat-delay) + 0.3s) 3;
+}
+[data-playing] .stat-visual-bounce-late {
+  animation-delay: calc(var(--stat-delay) + 1.1s);
+}
+@keyframes stat-bounce {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(30px);
+  }
+  34% {
+    transform: translateX(32px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+[data-playing] .stat-visual-pulse {
+  animation: stat-pulse 3s linear var(--stat-delay) 3;
+}
+@keyframes stat-pulse {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  27% {
+    opacity: 1;
+    transform: translateX(92px);
+  }
+  30%,
+  100% {
+    opacity: 0;
+    transform: translateX(92px);
+  }
+}
+[data-playing] .stat-visual-check {
+  animation: stat-check 3s linear var(--stat-delay) 3;
+}
+[data-playing] .stat-visual-check-late {
+  animation-name: stat-check-late;
+}
+@keyframes stat-check {
+  0%,
+  13% {
+    opacity: 0;
+  }
+  16%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes stat-check-late {
+  0%,
+  26% {
+    opacity: 0;
+  }
+  29%,
+  100% {
+    opacity: 1;
+  }
+}
+
+[data-playing] .stat-visual-shrink {
+  animation: stat-shrink 1.2s cubic-bezier(0.22, 1, 0.36, 1) var(--stat-delay) both;
+}
+@keyframes stat-shrink {
+  from {
+    transform: scaleX(1.247);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-stat-visual] * {
+    animation: none !important;
+  }
+}
+
+/* A printout of a band still waiting for its intro shows the stats, not their hidden start. */
+@media print {
+  .stats-edge-sweep {
+    display: none;
+  }
+  [data-stat-visual] * {
+    animation: none !important;
+  }
+  [data-impact-stat],
+  [data-impact-stat] .opacity-0 {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Marketing pages: the same visible keyboard focus as the product shell. In
+   the base layer, so a component's own focus-visible utilities still win. */
+@layer base {
+  [data-marketing-page] :where(a, button, input, summary, [role="tab"], [tabindex="0"]):focus-visible {
+    outline: 2px solid var(--color-info);
+    outline-offset: 3px;
+  }
+}
+
+/* Product shell: keyboard focus stays visible and reduced motion is honoured
+   across dense workspace views. */
+[data-product-shell] :where(button, a, input, textarea, select, summary, [role="button"]):focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 4px;
+}
+[data-product-shell] :where(button:disabled) {
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-product-shell] *,
+  [data-product-shell] *::before,
+  [data-product-shell] *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Extra series colours for the audit timeline chart, after info and accent. */
+[data-product-shell] {
+  --chart-3: #90b4c2;
+  --chart-4: #b6aed2;
+  --chart-5: #bdc7a3;
+  --chart-6: #8fbaac;
+}
+.light [data-product-shell] {
+  --chart-3: #427083;
+  --chart-4: #75658d;
+  --chart-5: #6a753f;
+  --chart-6: #3b7964;
+}

@@ -1,0 +1,7 @@
+**/*.md
+prisma/migrations/**
+lib/generated/**
+package-lock.json
+memory-service/**
+public/**
+test-fixtures/**

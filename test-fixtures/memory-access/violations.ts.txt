@@ -1,0 +1,18 @@
+// Fixture for eslint.memory-access.test.ts: every query shape the memory-access
+// gate must report, written the way a route outside the authorizer would write it.
+// Linted from text under an app/ path; never compiled or imported.
+import { Prisma } from "@/lib/generated/prisma/client";
+import { db } from "@/lib/db";
+
+export async function reads(id: string, orgId: string) {
+  // 1. a delegate call on a memory model
+  const brief = await db.brief.findFirst({ where: { id, orgId } });
+  // 1. the same through a transaction client
+  await db.$transaction(async (tx) => tx.memoryChunk.deleteMany({ where: { orgId } }));
+  // 2. a nested read through a relation
+  const run = await db.agentRun.findFirst({ where: { id }, include: { brief: true } });
+  // 3. raw SQL naming a memory table, quoted and bare
+  const quoted = Prisma.sql`SELECT "content" FROM "memory_chunks" WHERE "orgId" = ${orgId}`;
+  const bare = "select id from fact_edges where 1 = 1";
+  return { brief, run, quoted, bare };
+}

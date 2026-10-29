@@ -1,0 +1,11 @@
+-- A connected source records how many agents connecting it let read its content.
+--
+-- An agent holding a live capability token that covers a scope reads what lands in
+-- it, just as a person with a grant does, and no agent can read the source at the
+-- source. The connect-time widening check now counts those agents beside people and
+-- requires both counts to be acknowledged; this column records the agent count next
+-- to "connectWideningCount" (people).
+--
+-- Additive and nullable, no index, no backfill: a source connected before agents
+-- were counted carries null, because nobody counted them and none is invented.
+ALTER TABLE "sources" ADD COLUMN "connectWideningAgentCount" INTEGER;

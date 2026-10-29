@@ -1,0 +1,21 @@
+/* HeroUI's full component stylesheet (~490KB uncompressed), imported only
+   by the route groups that render `@heroui/react` components ((app), (auth)).
+   The marketing routes (/, /legal, /docs, /architecture) use none of it —
+   see app/globals.css, which no longer carries this import — so this keeps
+   that CSS out of the anonymous-majority page's render-blocking payload.
+   The brand token overrides HeroUI reads (--accent, --danger, etc., see the
+   theme blocks in globals.css) are unlayered custom properties, so they still
+   apply here regardless of which stylesheet declares the import. */
+@import "@heroui/styles";
+
+/* Auth and product cards use the same material as the marketing panels.
+   Transparent cards keep their existing layout-only behavior. */
+.card--default,
+.card--secondary,
+.card--tertiary {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(10px) saturate(1.08);
+  backdrop-filter: blur(10px) saturate(1.08);
+}

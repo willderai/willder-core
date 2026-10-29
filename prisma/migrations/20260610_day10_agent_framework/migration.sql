@@ -1,0 +1,12 @@
+-- Intentionally empty. This migration's statements now live in
+-- 20260610014500_agent_framework.
+--
+-- Prisma applies migrations in the order of the text before the first
+-- underscore, compared as strings, so this directory's 8-digit prefix
+-- "20260610" sorts before "20260610012608_day8_agents_runs", the migration
+-- that creates the agents table. On an empty database it therefore ran first
+-- and failed with 42P01 (relation "agents" does not exist).
+--
+-- The directory stays, under its original name, because every database that
+-- already applied it records that name in _prisma_migrations; renaming it
+-- would make those databases try to apply it again.

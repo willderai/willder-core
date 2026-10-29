@@ -1,0 +1,11 @@
+# The PROV-JSON validator's Python dependencies (scripts/prov/validate_prov_json.py), every
+# package pinned, transitive ones included. Install with --no-deps so nothing unpinned is
+# resolved in: pip install --no-deps -r scripts/prov/requirements.txt
+# Needs Python 3.13 or newer, as .github/workflows/ci.yml pins: referencing 0.37.0 declares
+# TypeVar defaults (PEP 696), so on 3.11 and 3.12 the install succeeds and the import fails.
+prov==3.2.2
+jsonschema==4.25.1
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.9.1

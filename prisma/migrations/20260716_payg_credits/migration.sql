@@ -1,0 +1,11 @@
+-- Intentionally empty. This migration's statements now live in
+-- 20260716120000_payg_credits.
+--
+-- It shares the 8-digit prefix "20260716" with 20260716_v2_billing, so Prisma
+-- broke the tie alphabetically and applied it first, before the columns it
+-- reads and drops existed. On an empty database it failed with 42703
+-- (column "bonusCredits" does not exist).
+--
+-- The directory stays, under its original name, because every database that
+-- already applied it records that name in _prisma_migrations; renaming it
+-- would make those databases try to apply it again.

@@ -1,0 +1,2537 @@
+// Willder — Prisma schema (Postgres is the app's system of record).
+// Data model: docs/willder_database.md. Two-DB split: Postgres = app state,
+// Neo4j (via Graphiti) = memory. accounts/contacts link to Neo4j by `entityId`.
+//
+// Every row carries `orgId` (the tenant key). Access control lives in scopes
+// (the ltree tree), grants, capabilities (agent tokens) and audit_log. The
+// `ltree` extension is enabled by migration; `path`/`scopePath` are stored as
+// String for Prisma-client ergonomics and queried with ltree ops via raw SQL
+// casts (`path::ltree @> $::ltree`) in services/access/check.ts.
+
+// compilerBuild "small": the query compiler is a WebAssembly module that every new
+// serverless instance decodes and compiles before its first query. The small build is
+// half the size of the default "fast" one, which takes ~35 ms off that first query on
+// a laptop (more on a function's CPU) for well under 1 ms per warm query. Measured in
+// the PR that set it; guarded by prisma/compiler-build.test.ts.
+generator client {
+  provider      = "prisma-client"
+  output        = "../lib/generated/prisma"
+  compilerBuild = "small"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Tenant root. One per customer business. Synced from a Clerk organization.
+model Org {
+  id         String   @id @default(cuid())
+  clerkOrgId String?  @unique // Clerk organization id (sync source)
+  name       String
+  plan       String   @default("free") // "free" | "founder" — PAYG metered beyond included allowance
+  settings   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  episodeCount       Int @default(0) // lifetime memory episodes ingested, gates the free cap
+  episodeCapIncluded Int @default(1000) // free: hard cap; founder: bundled allowance before PAYG overage
+
+  // --- Billing: PAYG credits ---
+  // No subscription/tiers. A single prepaid credit balance: welcome grant + purchased
+  // packs, drawn down by ACCEPTED artifacts. Balance may go negative under metered PAYG.
+  stripeCustomerId String? @unique
+  creditBalance    Int     @default(0) // spendable credits (welcome + purchased − spent)
+
+  users                  User[]
+  memberships            OrgMembership[]
+  accounts               Account[]
+  contacts               Contact[]
+  scopes                 Scope[]
+  grants                 Grant[]
+  capabilities           Capability[]
+  oauthConnections       OAuthConnection[]
+  auditLogs              AuditLog[]
+  auditChainHead         AuditChainHead?
+  integrations           Integration[]
+  conversations          Conversation[]
+  agents                 Agent[]
+  agentRuns              AgentRun[]
+  briefs                 Brief[]
+  factDisputes           FactDispute[]
+  factProvenance         FactProvenance[]
+  contactIdempotencyKeys ContactIdempotencyKey[]
+  feedbackEvents         FeedbackEvent[]
+  preference             OrgPreference?
+  sources                Source[]
+  entityAliases          EntityAlias[]
+  orgRoles               OrgRole[]
+  memoryChunks           MemoryChunk[]
+  uploadedFiles          UploadedFile[]
+  artifactUsages         ArtifactUsage[]
+  workflowRuns           WorkflowRun[]
+  workflowControl        OrgWorkflowControl?
+  changeEvents           ChangeEvent[]
+  agentCursors           AgentCursor[]
+  conventions            Convention[]
+  workingNotes           WorkingNote[]
+  taskStartDeliveries    TaskStartDelivery[]
+  taskStartServed        TaskStartServedItem[]
+  taskStartItemUses      TaskStartItemUse[]
+  erasureSuppressions    ErasureSuppression[]
+  erasureSuppressionsApplied ErasureSuppressionApplied[]
+  erasureReapplyDue      ErasureReapplyDue?
+  personErasureRequests  PersonErasureRequest[]
+  mcpClientRequests      McpClientRequest[]
+  factEdges              FactEdge[]
+  factVersionReads       FactVersionRead[]
+  sessionScopeReads      SessionScopeRead[]
+  productFeedback        ProductFeedback[]
+  memoryIngestKeys       MemoryIngestKey[]
+  adminDepartures        OrgAdminDeparture[]
+  removalEpoch           OrgRemovalEpoch?
+  scopeChangeCounts      ScopeChangeCount[]
+
+  @@map("orgs")
+}
+
+/// Who started an org deletion: an owner in the app, or Clerk's `organization.deleted`.
+enum OrgDeletionTrigger {
+  owner
+  clerk
+}
+
+/// pending: inside the 7 days, cancellable. deleting: the job is clearing the stores.
+/// deleted: done, the row is the receipt. cancelled: the owner stopped it.
+enum OrgDeletionStatus {
+  pending
+  deleting
+  deleted
+  cancelled
+}
+
+/// One org deletion and, once it has run, its receipt (services/memory/org-deletion).
+/// No foreign key to `orgs`, on purpose: this row must outlive the org it records.
+/// At most one per org is pending or deleting (a partial unique index in the migration),
+/// and while one is, the database refuses writes to the org's content and access tables.
+model OrgDeletion {
+  id                   String             @id @default(cuid())
+  orgId                String
+  /// The org's name at the request, so the receipt can say which org it was.
+  orgName              String
+  trigger              OrgDeletionTrigger
+  /// The person who asked (users.id), for an owner request; null for a Clerk event.
+  requestedBy          String?
+  /// The svix message id of the Clerk event that started or joined it: a redelivery starts nothing.
+  clerkEventId         String?            @unique
+  /// When Clerk deleted the org, from that event: who was an owner or admin then is a recipient.
+  clerkDeletedAt       DateTime?
+  /// The Clerk user ids that may download the final export and read the receipt, recorded
+  /// when each trigger happens: the person who asked, or the owners and admins when Clerk
+  /// deleted the org. Clerk ids, because the people's rows in this database go with the org.
+  /// Never widened later; a membership change can only take a person off.
+  recipientClerkIds    String[]
+  /// Set once the recipients are fixed: when Clerk deleted the org, or when the job clears
+  /// it. Until then a recipient must also still be an owner or admin of the org.
+  recipientsFixedAt    DateTime?
+  requestedAt          DateTime
+  /// requestedAt plus 7 days: the job clears the stores at its first run from then on.
+  effectiveAt          DateTime
+  status               OrgDeletionStatus  @default(pending)
+  cancelledAt          DateTime?
+  /// The Clerk user id of the person who cancelled.
+  cancelledBy          String?
+  /// The agent tokens the request revoked; a cancel restores exactly these.
+  revokedCapabilityIds String[]
+  /// The final export, a private blob, until the stores are cleared or the deletion is cancelled.
+  exportUrl            String?
+  exportBytes          Int?
+  exportedAt           DateTime?
+  exportError          String?
+  /// What the job has done so far (counts taken, stores cleared), so a run that died
+  /// part-way resumes where it stopped.
+  progress             Json               @default("{}")
+  startedAt            DateTime?
+  completedAt          DateTime?
+  attempts             Int                @default(0)
+  lastError            String?
+  /// What was removed and when backups age out, written when the deletion completes.
+  receipt              Json?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([status, effectiveAt])
+  @@index([orgId])
+  @@map("org_deletions")
+}
+
+/// One accepted artifact = one metered consumption event.
+/// The billable unit is a delivered+kept artifact (a persisted Brief, or an approved/
+/// sent Draft), NOT a raw run. `credits` is the value-tier cost; `overage` marks units
+/// billed beyond the tier's included allowance (reported to Stripe as metered usage).
+/// @not-memory: a billing meter; its scopePath records where usage happened, it holds no memory content.
+model ArtifactUsage {
+  id             String   @id @default(cuid())
+  orgId          String
+  artifactType   String // "handoff" | "architecture_plan" | "qa_review" | "draft"
+  briefId        String? // the accepted Brief, when the artifact is a brief
+  draftId        String? // the approved/sent Draft, when the artifact is a draft
+  credits        Int // value-tier cost of this artifact
+  scopePath      String?
+  actorId        String? // who triggered/accepted it
+  overage        Boolean  @default(false) // spent while balance was insufficient → metered (PAYG)
+  stripeReported Boolean  @default(false) // overage successfully reported to Stripe
+  createdAt      DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([orgId, scopePath])
+  @@map("artifact_usage")
+}
+
+/// A human member of an org. Identity is owned by Clerk; mirrored here for joins.
+model User {
+  id            String   @id @default(cuid())
+  orgId         String
+  clerkId       String   @unique // Clerk user id (sync source)
+  email         String
+  /// Whether Clerk verified `email`, this exact address (lib/clerk-email.ts). Null
+  /// means not yet known: a user created before this was stored, until their next
+  /// sign-in or a Clerk user.updated webhook records it. Matching a person to a
+  /// source's sharing list by email (services/access/source-widening.ts) trusts
+  /// only `true`; false and null both count the person as gaining access.
+  emailVerified Boolean?
+  name          String?
+  role          UserRole @default(member)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  org              Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  memberships      OrgMembership[]
+  orgRoles         OrgRole[]
+  ownedAccounts    Account[]         @relation("AccountOwner")
+  oauthConnections OAuthConnection[]
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@map("users")
+}
+
+/// A person's membership of one org, and their role there. A person can belong
+/// to several orgs; `User.orgId`/`User.role` only name the org they last used.
+/// Every authorization question ("is this person in org X, with what role?")
+/// reads this table. `assertedAt` is when Clerk asserted the state recorded
+/// here (a webhook event's time, or a session token's issue time); a write
+/// carrying an older assertion than the stored one is ignored, so a late
+/// webhook or a stale session cannot undo a newer removal or demotion.
+model OrgMembership {
+  orgId      String
+  userId     String
+  role       UserRole
+  assertedAt DateTime
+  removedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([orgId, userId])
+  @@index([userId])
+  @@map("org_memberships")
+}
+
+/// An owner or admin whose last membership ended, and whose `users` row went with it:
+/// their Clerk user id and when Clerk said they left, kept for three days
+/// (services/access/membership.ts) so an org deletion Clerk reports with their departure
+/// still names them a recipient of the final export. Goes with the org.
+model OrgAdminDeparture {
+  orgId       String
+  clerkUserId String
+  removedAt   DateTime
+  org         Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([orgId, clerkUserId])
+  @@index([removedAt])
+  @@map("org_admin_departures")
+}
+
+enum UserRole {
+  owner
+  admin
+  member
+}
+
+/// A target company (CRM record). The structured half; memory lives in Neo4j.
+model Account {
+  id           String        @id @default(cuid())
+  orgId        String
+  name         String
+  domain       String?
+  status       AccountStatus @default(active)
+  entityId     String? // -> Neo4j (Graphiti) entity uuid; null until first ingest
+  ownerId      String? // -> users.id; the team member who owns this account
+  description  String?
+  industry     String?
+  socialLinks  Json          @default("{}")
+  enrichStatus String? // transient: current enrichment phase shown in UI (null = idle/done)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  org      Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner    User?     @relation("AccountOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts Contact[]
+
+  @@index([orgId])
+  @@index([orgId, domain])
+  @@index([ownerId])
+  @@map("accounts")
+}
+
+/// Static org-level role registry: maps titles (CEO, CTO, founder) to specific users.
+/// Loaded by the entity resolver so "our CEO" → canonical user name before Graphiti.
+model OrgRole {
+  id        String   @id @default(cuid())
+  orgId     String
+  role      String // e.g. "CEO", "CTO", "founder", "head of sales"
+  userId    String
+  aliases   String[] // e.g. ["the CEO", "our CEO", "Willder's CEO"]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org  Org  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, role])
+  @@index([orgId])
+  @@map("org_roles")
+}
+
+enum AccountStatus {
+  active
+  inactive
+  archived
+}
+
+/// A person at an account (CRM record). Structured half; memory lives in Neo4j.
+model Contact {
+  id           String        @id @default(cuid())
+  orgId        String
+  accountId    String?
+  name         String
+  email        String?
+  title        String?
+  type         String        @default("prospect") // one of CONTACT_TYPES in lib/contact-types.ts
+  description  String?
+  socialLinks  Json          @default("{}")
+  status       ContactStatus @default(active)
+  entityId     String? // -> Neo4j (Graphiti) entity uuid; null until first ingest
+  enrichStatus String? // transient: current enrichment phase shown in UI (null = idle/done)
+  /// Optimistic-concurrency token for the agent-API upsert surface.
+  /// Increments by exactly 1 on every accepted agent-API update; a caller must
+  /// supply the revision it last read as `baseRevision` or the write is
+  /// rejected as stale. Existing human-facing CRUD (app/api/contacts/*) does
+  /// not read or bump this — it's specific to the agent upsert path below.
+  revision     Int           @default(0)
+  /// True once this contact has been suppressed from automated outreach (hard
+  /// bounce, opt-out, legal hold, etc.). The agent-API upsert
+  /// (services/contacts/agent-contacts.ts) never accepts this field as input
+  /// and never clears it once true — suppression is lifted only through the
+  /// existing human-facing contact UI, never through this agent surface.
+  suppressed   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  org     Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  conversations   Conversation[]
+  idempotencyKeys ContactIdempotencyKey[]
+
+  @@index([orgId])
+  @@index([orgId, accountId])
+  @@index([orgId, email])
+  @@index([orgId, type])
+  @@map("contacts")
+}
+
+/// Idempotency ledger for the agent-API contact upsert. A caller-supplied
+/// `idempotencyKey` is unique per org: the
+/// first upsert under a key performs the real write and records its outcome
+/// here; a retry presenting the SAME key returns the recorded outcome without
+/// re-applying any write (no duplicate side effect). `requestHash` guards
+/// against the same key being reused for a genuinely different request body,
+/// which is a caller bug, not a safe retry, and must not silently replay a
+/// stale result.
+///
+/// `contactId` is nullable with `onDelete: SetNull`, not Cascade: the
+/// human-facing DELETE route (app/api/contacts/[id]/route.ts) hard-deletes a
+/// contact, and a Cascade here would wipe this row along with it, so a delayed
+/// create retry under the same idempotencyKey would find no recorded key and
+/// recreate the contact a human just deleted. `resultSnapshot` freezes the
+/// full AgentContactSummary at write time so a replay never needs to resolve
+/// `contactId` to a live row.
+///
+/// `ingestedAt` is null until this row's write has actually reached the
+/// memory graph. The contact row
+/// and this ledger row commit in one transaction, but `ingestMemory` is an
+/// external enqueue that can't be part of that transaction — it runs after
+/// commit and can fail on its own. Null here means a replay of this key must
+/// repair the gap (re-attempt the sync) before returning the recorded
+/// success, instead of reporting success a second time with the graph still
+/// never told (see agent-contacts.ts's replayIdempotentResult).
+model ContactIdempotencyKey {
+  id                 String    @id @default(cuid())
+  orgId              String
+  key                String
+  requestHash        String
+  contactId          String?
+  resultAction       String // "created" | "updated"
+  resultRevision     Int
+  /// Frozen AgentContactSummary (services/contacts/agent-contacts.ts) as of
+  /// the accepted write — the actual "recorded outcome" a replay returns.
+  resultSnapshot     Json
+  createdAt          DateTime  @default(now())
+  ingestedAt         DateTime?
+  /// Lease-style claim on the right to dispatch this row's graph delivery; not
+  /// a second copy of `ingestedAt`. `ingestedAt` means delivery-complete, so
+  /// its null window spans the whole delivery latency, and a client
+  /// retry-on-timeout landing in that window would otherwise re-dispatch a
+  /// delivery that is merely still in flight (an org-visible duplicate
+  /// episode that burns episode-cap quota). Set when a dispatch attempt
+  /// (fresh write or repair) claims the row through `claimDeliveryAttempt`,
+  /// an atomic `updateMany` CAS that only succeeds while `ingestedAt IS NULL
+  /// AND (deliveryClaimedAt IS NULL OR older than the lease)`; a second
+  /// attempt arriving before the first finishes sees the claim and skips.
+  /// Released back to null by `releaseDeliveryClaim` when the dispatch
+  /// attempt itself throws, so repair after a genuine enqueue failure runs
+  /// without delay. Left set once dispatch is accepted: `ingestedAt` closes
+  /// the loop. A claim with no `ingestedAt` past the lease window means the
+  /// async delivery died with nothing to release it (the queued path has no
+  /// failure handler), and the lease is what lets that case self-heal.
+  deliveryClaimedAt  DateTime?
+  /// Opaque per-attempt claim token: identifies which dispatch attempt holds
+  /// `deliveryClaimedAt`, so `releaseDeliveryClaim` fences on "is this still
+  /// my claim" rather than on `ingestedAt: null` alone. Without it, a stale
+  /// attempt A that outlived its lease and failed late would wipe the live
+  /// claim of a reclaiming attempt B, reopening the duplicate-delivery window.
+  /// Comparing `deliveryClaimedAt` by equality is not a safe fence:
+  /// `claimDeliveryAttempt`'s `new Date()` has millisecond resolution, so a
+  /// reclaim in the same millisecond as the stale claim produces an equal
+  /// timestamp. A fresh `randomUUID()` per attempt has no such collision.
+  /// Cleared alongside `deliveryClaimedAt` on release; left set once dispatch
+  /// is accepted, same lifecycle as `deliveryClaimedAt`.
+  deliveryClaimToken String?
+  /// The actor who made the ORIGINAL accepted write (ctx.actor.id at create
+  /// time), not whoever happens to be retrying. A delayed graph-sync repair
+  /// (see agent-contacts.ts's replayIdempotentResult) must attribute the fact
+  /// to this actor, or a retry from a different capability/agent silently
+  /// reassigns authorship and skews provenance ranking.
+  actorId            String
+
+  org     Org      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, key])
+  @@index([orgId])
+  @@map("contact_idempotency_keys")
+}
+
+enum ContactStatus {
+  active
+  unsubscribed
+  bounced
+  archived
+}
+
+// --- UC2 Access Control ---------------------------------------------------
+// scopes form an ltree tree (org root → dept → account → deal). A grant gives a
+// grantee (user / role / agent) a permission on a scope; check() allows a read
+// when a grant covers a scope that is an ancestor-or-self of the target. Default
+// deny: no covering grant → no access. Agents authenticate with capability tokens
+// instead of a session. Every check() writes one append-only audit_log row.
+
+/// A node in the access-control scope tree. `path` is an ltree value (stored as
+/// String for Prisma-client ergonomics; ancestor ops run via raw SQL `path::ltree`
+/// casts in services/access/check.ts). Root path = `org_<orgId>`.
+model Scope {
+  id        String   @id @default(cuid())
+  orgId     String
+  path      String // ltree, e.g. "org_<id>" or "org_<id>.dept_sales"
+  name      String
+  createdAt DateTime @default(now())
+
+  org    Org     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  grants Grant[]
+
+  @@unique([orgId, path])
+  @@index([orgId])
+  @@map("scopes")
+}
+
+/// A grant of a permission on a scope to a grantee. For role grants, `granteeId`
+/// is the UserRole literal ("owner"/"admin"/"member"); for user grants it is the
+/// internal User.id; for agent grants, the agent id.
+model Grant {
+  id          String      @id @default(cuid())
+  orgId       String
+  scopeId     String
+  granteeType GranteeType
+  granteeId   String
+  permission  Permission
+  /// Optional expiry for time-bounded access (e.g. temporary collaboration on a
+  /// deal/sprint). Null = permanent until revoked. check() ignores expired grants.
+  expiresAt   DateTime?
+  createdBy   String? // who issued the grant (internal User.id), for audit
+  createdAt   DateTime    @default(now())
+
+  org   Org   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  scope Scope @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+
+  @@unique([scopeId, granteeType, granteeId, permission])
+  @@index([orgId])
+  @@index([orgId, granteeType, granteeId])
+  @@map("grants")
+}
+
+enum GranteeType {
+  user
+  role
+  agent
+  /// Scope-common baseline: a grant to `everyone` applies to all org members on
+  /// that scope (and, via ltree, its descendants) — the "other" bits / default
+  /// ACL a scope admin sets so the whole scope shares a common access level.
+  everyone
+}
+
+enum Permission {
+  read
+  write
+  admin
+}
+
+/// An agent capability token: a scoped, expiring credential a non-human actor
+/// presents to read memory. The raw token is shown once at issue; only its
+/// SHA-256 hash is stored. check() validates the hash + expiry + revocation +
+/// scope containment + permission. Least-privilege access for agents.
+/// @not-memory: the authorizer's own credential table, read by services/access.
+model Capability {
+  id                 String     @id @default(cuid())
+  orgId              String
+  agentId            String
+  tokenHash          String     @unique
+  scopePath          String // ltree path this token is scoped to
+  permission         Permission @default(read)
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  createdBy          String?
+  createdAt          DateTime   @default(now())
+  /// A STAMPED RATCHET, never re-derived from the current "grants" table
+  /// state. A live EXISTS query against "grants" cannot answer "is this
+  /// agentId grant-governed": it is correct for a DEMOTED grant (a narrower or
+  /// expired row is still ON FILE), but a full removal outside the DELETE
+  /// /api/access/grants/:id cascade (DELETE /api/access/scopes/:id's `onDelete:
+  /// Cascade` on Grant.scope hard-deletes Grant rows with no application code
+  /// in the path) leaves ZERO grant rows on file, indistinguishable from an
+  /// agentId that was NEVER grant-governed (the deliberate grandfather case for
+  /// system agents like copy-agent/research-agent, minted with no
+  /// /access/grants entry at all). Both would land on the same false, and the
+  /// stale wide capability would stay enforceable to natural expiry (up to 90
+  /// days). Set true once (deriveGrantGovernance() in check.ts,
+  /// at mint if a grant already exists for this agentId, or retroactively via
+  /// the ratchet in POST /api/access/grants the moment this agentId's FIRST
+  /// grant is created) and never cleared by anything afterward, including
+  /// every one of that agentId's grants later being deleted — the ratchet is
+  /// what a hard-delete cascade cannot silently undo.
+  grantGoverned      Boolean    @default(false)
+  /// Provenance only — which Grant.id first established governance for this
+  /// capability's agentId. Deliberately NOT a foreign key: an `onDelete:
+  /// SetNull` would erase the exact fact grantGoverned exists to make durable
+  /// the moment that grant is deleted, and `onDelete: Restrict` would block
+  /// grant deletion entirely. May reference a Grant row that no longer exists;
+  /// nothing else reads it, and check.ts's decision never depends on it.
+  derivedFromGrantId String?
+  /// True when `createdBy` is a person, so check() bounds every use of this
+  /// token by what that person can do right now. Set by the database trigger
+  /// `capabilities_issuer_bound` on every write, overriding whatever the writer
+  /// sent; the same trigger refuses a person-issued row wider than its issuer.
+  /// False only for `createdBy` null or `system:<label>`. See migration
+  /// 20261010010000_capability_issuer_bound.
+  issuedByPerson     Boolean    @default(false)
+
+  org             Org                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  oauthConnection OAuthConnection?
+  oauthCodes      OAuthAuthorizationCode[]
+  oauthTokens     OAuthToken[]
+
+  @@index([orgId])
+  @@index([orgId, agentId])
+  @@map("capabilities")
+}
+
+/// One person's OAuth connection from one client into one org, and the capability
+/// that client's requests run as. services/access/oauth-connection.ts is the only
+/// writer. A person has at most one row per client per org: connecting again binds
+/// a new capability to the same row and revokes the one it replaces. The connection
+/// is live only while the row is unrevoked and its capability is unrevoked and
+/// unexpired, so revoking either one ends it.
+model OAuthConnection {
+  id           String    @id @default(cuid())
+  orgId        String
+  /// The person who connected (User.id). Also the bound capability's createdBy.
+  userId       String
+  /// The OAuth client the connection is for: an OAuthClient id
+  /// (services/access/oauth-client.ts). Not a foreign key, so rows written before
+  /// Willder issued its own client ids stay readable; they match no client and
+  /// no token.
+  clientId     String
+  /// The capability the client's requests run as. Never handed to the client.
+  capabilityId String    @unique
+  createdAt    DateTime  @default(now())
+  /// When the current capability was bound: the first connect, or the latest reconnect.
+  connectedAt  DateTime  @default(now())
+  revokedAt    DateTime?
+
+  org        Org                      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  capability Capability               @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+  codes      OAuthAuthorizationCode[]
+  tokens     OAuthToken[]
+
+  @@unique([orgId, userId, clientId])
+  @@map("oauth_connections")
+}
+
+/// An OAuth client registered with Willder's authorization server by dynamic
+/// client registration (RFC 7591). services/access/oauth-client.ts is the only
+/// writer. Every client is public: it holds no secret, and PKCE binds each
+/// authorization code to the client that asked for it. A client reaches nothing
+/// until a person consents; registering is not access.
+model OAuthClient {
+  /// The client_id handed to the client: `wcl_` and 32 random bytes.
+  id           String   @id
+  /// The name the client gave itself. Unverified: the consent page says so.
+  name         String?
+  /// Where an authorization response may be sent. https, or http to a loopback host.
+  redirectUris String[]
+  createdAt    DateTime @default(now())
+
+  codes  OAuthAuthorizationCode[]
+  tokens OAuthToken[]
+
+  @@map("oauth_clients")
+}
+
+/// A one-time authorization code from the consent page
+/// (services/access/oauth-authorization.ts). It names the capability the person
+/// just connected, the PKCE challenge the token request must answer, and the
+/// resource the token will be for. Exchanged at most once, within minutes.
+model OAuthAuthorizationCode {
+  id            String    @id @default(cuid())
+  /// SHA-256 of the code. The code itself is never stored.
+  codeHash      String    @unique
+  clientId      String
+  connectionId  String
+  capabilityId  String
+  /// The redirect URI the response went to; the token request must repeat it.
+  redirectUri   String
+  /// The S256 PKCE challenge from the authorization request.
+  codeChallenge String
+  /// The MCP resource URL the token is issued for (RFC 8707).
+  resource      String
+  /// The OAuth scope granted, as the token response reports it.
+  scope         String
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  client     OAuthClient     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection OAuthConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  capability Capability      @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@map("oauth_authorization_codes")
+}
+
+/// An OAuth access or refresh token Willder issued
+/// (services/access/oauth-authorization.ts). A token runs as the capability it
+/// was issued for and as nothing else, so revoking that capability or its
+/// connection ends every token at once. Refresh tokens rotate: each is
+/// exchanged at most once, and presenting a spent one revokes its whole family.
+model OAuthToken {
+  id           String    @id @default(cuid())
+  /// SHA-256 of the token. The token itself is never stored.
+  tokenHash    String    @unique
+  /// `access` or `refresh`.
+  kind         String
+  clientId     String
+  connectionId String
+  capabilityId String
+  /// The authorization code this chain of tokens started from. Every token
+  /// refreshed from it shares it, so one spent refresh token revokes them all.
+  familyId     String
+  /// The MCP resource URL the token is for (RFC 8707). /api/mcp refuses any other.
+  resource     String
+  scope        String
+  expiresAt    DateTime
+  /// When a refresh token was exchanged for its successor.
+  usedAt       DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  client     OAuthClient     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  connection OAuthConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  capability Capability      @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@map("oauth_tokens")
+}
+
+/// Append-only access audit. Every check() — allow or deny — writes one row.
+/// "Who accessed what, when, and was it allowed."
+/// One row per org: `epoch` moves on every removal of text in the org, so a cache of
+/// text derived from the org's scopes is never served past a removal
+/// (services/access/check.ts scopeCacheStamp()). Written only by the triggers and
+/// public.bump_org_removal_epoch() in migration 20261024120000_scope_cache_epoch. Goes
+/// with the org (a bump that commits with the org's own deletion is skipped).
+model OrgRemovalEpoch {
+  orgId     String   @id
+  epoch     BigInt   @default(0)
+  updatedAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_removal_epochs")
+}
+
+/// Applied writes and deletes recorded at one exact scope (an `audit_log` target's part
+/// before any '/'), counted by the trigger in migration 20261024120000_scope_cache_epoch.
+/// A brief's change count is the sum over its scope and the scopes below it.
+/// @memory: its scopePath keys name the exact scopes that saw writes, which tells a reader a scope exists and is active; only the authorizer (services/access/check.ts) reads it.
+model ScopeChangeCount {
+  orgId     String
+  scopePath String
+  count     BigInt   @default(0)
+  updatedAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([orgId, scopePath])
+  @@map("scope_change_counts")
+}
+
+model AuditLog {
+  id        String        @id @default(cuid())
+  orgId     String
+  actorType String // "human" | "agent" | "extraction"
+  actorId   String
+  action    String // e.g. "memory.read", "memory.entity", "memory.write"
+  target    String? // scope path / entity id / query fingerprint
+  decision  AuditDecision
+  reason    String?
+  metadata  Json          @default("{}")
+  at        DateTime      @default(now())
+  /// The AgentRun.id this row was written under when the read/write happened inside
+  /// an agent run, or a WorkflowRun.id for the workflow engine (see
+  /// services/workflows/engine.ts's recordWorkflowAudit()); no FK either way.
+  /// Nullable: a human actor's row has no run, and rows that predate this column
+  /// stay untagged rather than being guessed at. Set once, at create() time, never
+  /// written after the fact, so the log stays append-only. Disambiguates two runs
+  /// of the same actor that share an overlapping time window.
+  runId     String?
+
+  /// Tamper evidence. Written only by the database's insert trigger, which overrides
+  /// anything a writer passes; see prisma/migrations/20261006160000_audit_log_tamper_evident.
+  /// `chainSeq` is the row's 1-based position in its org's chain, `prevHash` the hash
+  /// of the row before it, `rowHash` the SHA-256 of this row's canonical content.
+  /// Null on rows written before the chain existed: those are unchained, not rewritten.
+  /// services/access/audit-chain.ts verifies the chain.
+  chainSeq  Int?
+  prevHash  String?
+  rowHash   String?
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, chainSeq])
+  @@index([orgId, at])
+  @@index([orgId, runId])
+  @@index([orgId, actorType, actorId, decision, at])
+  @@map("audit_log")
+}
+
+/// The last link of an org's audit chain: its position and hash. Written only by the
+/// audit_log insert trigger, under a row lock that serializes one org's audit inserts so
+/// its chain cannot fork. The verifier compares the chain's tail with this row, which is
+/// how a deleted last row is detected.
+model AuditChainHead {
+  orgId     String   @id
+  seq       Int
+  hash      String
+  startedAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("audit_chain_heads")
+}
+
+enum AuditDecision {
+  allow
+  deny
+}
+
+// --- UC4 Outbound Workforce (Phase C) — Day 4 -----------------------------
+// Integrations connect a customer's mailbox to an org. We connect DIRECTLY via the
+// provider's OAuth — Gmail API (Google) and Microsoft Graph (Outlook/M365) — rather
+// than a paid aggregator: free, and it sends from the customer's real mailbox. A connect starts an OAuth authorize flow (pending); the provider redirects
+// back to our callback with a code we exchange for tokens, flipping the row to
+// `connected`. Because we hold the OAuth tokens ourselves, `encryptedTokens` stores
+// them encrypted with an app key (vs an aggregator, which would hold them for us).
+// Connecting/disconnecting is an owner/admin action; every row is tenant-scoped.
+
+/// A connection between an org and a mailbox provider (Gmail / Outlook), via OAuth.
+model Integration {
+  id                String              @id @default(cuid())
+  orgId             String
+  provider          IntegrationProvider
+  /// Provider-side account id (Google sub / Graph user id / Slack team id / Figma
+  /// user id). Null until OAuth completes.
+  externalAccountId String?
+  status            IntegrationStatus   @default(pending)
+  /// OAuth tokens (access + refresh), encrypted at rest with an app key. Null until
+  /// connected. The only secret we hold; never returned to clients.
+  encryptedTokens   String?
+  /// Non-secret provider metadata (connected email, scopes granted, last sync).
+  meta              Json                @default("{}")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // One live connection per (org, provider, account). Lets a pending row exist with
+  // a null account id, then resolve to a unique connected account.
+  @@unique([orgId, provider, externalAccountId])
+  @@index([orgId])
+  @@index([orgId, provider])
+  @@map("integrations")
+}
+
+enum IntegrationProvider {
+  gmail // Google Workspace / Gmail API
+  outlook // Microsoft 365 / Outlook via Microsoft Graph
+  slack // Slack workspace, read-only knowledge source (services/integrations/connector-oauth.ts)
+  figma // Figma account, read-only knowledge source
+}
+
+enum IntegrationStatus {
+  pending // hosted-auth started, awaiting the provider webhook
+  connected
+  error
+  disconnected
+}
+
+// --- UC4 Outbound: send + replies (Day 6) ---------------------------------
+// An approved draft is sent FROM THE CUSTOMER'S OWN MAILBOX (Gmail API / Microsoft
+// Graph; provider call is mocked until real OAuth lands — see services/integrations/
+// mailbox.ts). Sending opens a Conversation (a provider thread) with one outbound
+// Message; the inbound replies webhook matches the thread and appends inbound
+// Messages. Threads/messages are tenant-scoped (orgId); reads go through the same
+// access context as the rest of the app (UC2). Model: docs/willder_database.md.
+
+/// One outbound email thread with a contact (a provider conversation). Matched to
+/// inbound replies by `threadRef` (Gmail threadId / Graph conversationId).
+model Conversation {
+  id            String              @id @default(cuid())
+  orgId         String
+  contactId     String
+  campaignId    String?
+  /// The mailbox integration this thread was sent from / belongs to.
+  integrationId String?
+  channel       ConversationChannel @default(email)
+  /// Provider thread id; null only briefly before the first send resolves it.
+  threadRef     String?
+  subject       String?
+  status        ConversationStatus  @default(open)
+  lastMessageAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  org      Org       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  // One thread per provider thread id within an org (lets replies match a send).
+  @@unique([orgId, threadRef])
+  @@index([orgId])
+  @@index([orgId, status])
+  @@index([orgId, contactId])
+  @@map("conversations")
+}
+
+enum ConversationChannel {
+  email
+}
+
+enum ConversationStatus {
+  open // sent, awaiting a reply
+  replied // the prospect replied
+  closed
+}
+
+/// A single message in a conversation — outbound (we sent it, from a draft) or
+/// inbound (a reply we received via the webhook). `externalId` is the provider
+/// message id (dedupes webhook redeliveries + ties back to the send).
+model Message {
+  id             String           @id @default(cuid())
+  orgId          String
+  conversationId String
+  direction      MessageDirection
+  subject        String?
+  body           String
+  /// Sender/recipient address (for inbound: who replied; outbound: the mailbox).
+  fromAddress    String?
+  /// Provider message id; unique within an org so webhook redeliveries dedupe.
+  externalId     String?
+  /// The draft this outbound message was sent from (provenance); null for inbound.
+  draftId        String?
+  sentAt         DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, externalId])
+  @@index([conversationId, sentAt])
+  @@map("messages")
+}
+
+enum MessageDirection {
+  out // we sent it (from an approved draft)
+  in // an inbound reply (via the webhook)
+}
+
+// --- UC3 Agents (Day 8): named agents + run history ----------------------------
+// Two pre-configured agents per org: the research agent (enrichment → memory) and
+// the copy agent (memory retrieval → drafting). Seeded idempotently in ensureTenant.
+// AgentRun rows are created/completed inside Inngest steps so the timeline is
+// accurate even after retries. model: docs/willder_database.md (forthcoming).
+
+/// A named AI agent configured for an org. Two system agents are seeded per org
+/// (research + copy); additional agents can be created by admins with custom prompts
+/// and tool sets (role = custom).
+model Agent {
+  id           String    @id @default(cuid())
+  orgId        String
+  /// Stable business key: "research-agent" | "copy-agent" for system agents; any slug for custom.
+  agentKey     String
+  name         String
+  role         AgentRole
+  /// The LLM model this agent uses (e.g. "qwen/qwen3-32b").
+  model        String?
+  /// System prompt / instructions passed to Mastra Agent. Null → default for the role.
+  systemPrompt String?
+  /// Ordered list of tool keys available to this agent (see services/agents/tools.ts).
+  tools        String[]  @default([])
+  settings     Json      @default("{}")
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  org  Org        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  runs AgentRun[]
+
+  @@unique([orgId, agentKey])
+  @@index([orgId])
+  @@map("agents")
+}
+
+enum AgentRole {
+  research
+  copy
+  /// Generates a scoped briefing document from memory, bounded to a capability-token
+  /// grant (e.g. onboarding a contractor/freelancer with exactly the access they have).
+  handoff
+  /// Plans architecture/schedule grounded in confirmed decisions, constraints, system
+  /// design, UX/UI, and business logic already in memory (UC7).
+  architecture
+  /// Reviews code against stored specs/decisions (UC8). Text/diff-level only; it does
+  /// not run tests or a browser.
+  qa
+  /// User-created agents with custom prompt + tool set.
+  custom
+}
+
+/// One execution of an agent: from trigger to completion or failure.
+model AgentRun {
+  id          String         @id @default(cuid())
+  orgId       String
+  agentId     String
+  status      AgentRunStatus @default(running)
+  /// userId or "system" — who triggered the parent campaign/enrichment.
+  triggeredBy String?
+  /// Campaign or enrichment context passed to the run.
+  meta        Json           @default("{}")
+  startedAt   DateTime       @default(now())
+  finishedAt  DateTime?
+  createdAt   DateTime       @default(now())
+
+  /// Interactive-loop state (docs/design_interactive_agent_loop.md §7). All nullable/
+  /// defaulted so legacy one-shot runs stay valid — a null `phase` means "one-shot".
+  /// Finer lifecycle than `status`: planning|consulting|executing|paused|finalizing|done|failed.
+  phase          String?
+  /// AgentRunPlan (items + revision) — the editable checklist. Null until planning emits it.
+  plan           Json?
+  /// Index of the next pending plan item the executor will run.
+  cursor         Int      @default(0)
+  /// Bumped on every applied plan edit; guards optimistic-concurrency on live edits (§5).
+  revision       Int      @default(0)
+  /// ClarificationRequest while paused; null otherwise.
+  pendingInput   Json?
+  /// Idempotency set for live plan edits — a seen editId is ignored on replay/resume (§5).
+  appliedEditIds String[] @default([])
+  /// Set at finalize; links the run to its assembled artifact (today the two are unlinked).
+  briefId        String?
+
+  org    Org             @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  agent  Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  events AgentRunEvent[]
+
+  @@index([orgId, agentId])
+  @@index([orgId, status])
+  @@map("agent_runs")
+}
+
+/// Append-only replay log for the interactive loop — the DB-backed equivalent of a
+/// resumable stream. A reconnecting client requests events with seq > N (?afterSeq)
+/// and replays only what it missed (docs/design_interactive_agent_loop.md §7).
+model AgentRunEvent {
+  id        String   @id @default(cuid())
+  runId     String
+  /// Monotonic per run; the client reconnects with ?afterSeq and sorts/dedupes by this.
+  seq       Int
+  /// RunEvent discriminant (plan|step_started|needs_input|done|…), see types/agent-run.ts.
+  type      String
+  /// The full RunEvent payload as streamed.
+  payload   Json
+  createdAt DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, seq])
+  @@index([runId, seq])
+  @@map("agent_run_events")
+}
+
+enum AgentRunStatus {
+  running
+  completed
+  failed
+}
+
+// --- Multi-agent workflow engine ------
+// Generic, customer-facing workflow runner: a drafter produces work, a checker
+// verifies it, a person approves anything irreversible. Builds on the capability-
+// token + audit-log infra above rather than replacing it; see services/workflows/
+// for the engine and the first workflow (handoff brief). All new tables: a table
+// already serving live traffic never gains a required column.
+
+enum WorkflowRunStatus {
+  queued
+  drafting
+  checking
+  awaiting_approval
+  delivered
+  stopped
+  failed
+  over_budget
+}
+
+enum WorkflowRole {
+  drafter
+  checker
+  approver
+}
+
+enum WorkflowStepVerdict {
+  pass
+  changes_requested
+}
+
+/// @not-memory: workflow execution state; its scopePath bounds the run's capability.
+model WorkflowRun {
+  id          String @id @default(cuid())
+  orgId       String
+  workflowKey String // e.g. "handoff-brief" — the workflow template this run executes
+
+  /// Guarantee 1 (one reservation per job): a stable hash of (orgId, workflowKey,
+  /// requestedBy, requestFingerprint). A duplicate trigger hits this unique
+  /// constraint; startWorkflowRun() returns the existing row instead of creating
+  /// a second one.
+  idempotencyKey String @unique
+  requestedBy    String // internal User.id who requested the run
+
+  /// The memory slice this run may read — never wider than requestedBy's own
+  /// access at request time (enforced by the caller before startWorkflowRun(),
+  /// same posture as Brief.scopePath / provisionHandoffAgentCapability).
+  scopePath String
+  status    WorkflowRunStatus @default(queued)
+  round     Int               @default(0)
+  roundCap  Int               @default(3)
+
+  /// Guarantee 5 (budget enforced): reservedCredits + spentCredits must never
+  /// exceed budgetCredits — enforced in services/workflows/engine.ts, never in
+  /// application code that doesn't go through it.
+  budgetCredits   Int
+  reservedCredits Int @default(0)
+  spentCredits    Int @default(0)
+
+  /// Guarantee 6 (stop switch): set by stopWorkflowRun(), which also revokes
+  /// every capability minted for this run's steps.
+  stopRequestedAt DateTime?
+  stoppedAt       DateTime?
+  failureReason   String?
+
+  /// Guarantee: heartbeat + timeout. Bumped at the start of every step;
+  /// releaseStuckWorkflowRuns() fails a run whose heartbeat is older than
+  /// timeoutSeconds and releases its reservation.
+  heartbeatAt    DateTime @default(now())
+  timeoutSeconds Int      @default(600)
+
+  briefId     String? // set once delivered — links the run to the Brief it produced
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deliveredAt DateTime?
+
+  org      Org               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  steps    WorkflowRunStep[]
+  approval WorkflowApproval?
+
+  @@index([orgId, status])
+  @@map("workflow_runs")
+}
+
+/// One attempt at one role, in one round. Idempotency key (guarantee 2: safe
+/// retries) is `${runId}:${role}:${round}` — a retry after a timeout finds the
+/// existing row and returns its recorded result instead of re-executing or
+/// double-delivering.
+model WorkflowRunStep {
+  id             String               @id @default(cuid())
+  runId          String
+  role           WorkflowRole
+  round          Int
+  idempotencyKey String               @unique
+  verdict        WorkflowStepVerdict?
+  /// Machine-readable changes-requested reasons, e.g. ["cites a source outside scope"].
+  reasons        Json                 @default("[]")
+  output         Json?
+  /// [{sourceId, scopePath, version}] — the sources this step's output actually
+  /// cites (guarantee 4). The checker independently re-verifies each one against
+  /// the run's own scopePath before a person ever sees the output (guarantee 3).
+  evidence       Json                 @default("[]")
+  costCredits    Int                  @default(0)
+  capabilityId   String?
+  startedAt      DateTime             @default(now())
+  finishedAt     DateTime?
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, round])
+  @@map("workflow_run_steps")
+}
+
+/// The ONLY record that constitutes a real human approval (guarantee 8: no
+/// fabricated approvals — text such as "approved" in a model's own output is
+/// never treated as one). deliverWorkflowRun() refuses to deliver without one.
+model WorkflowApproval {
+  id         String   @id @default(cuid())
+  runId      String   @unique
+  approverId String
+  decision   String // "approved" | "rejected"
+  reason     String?
+  at         DateTime @default(now())
+
+  run WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_approvals")
+}
+
+/// Customer-level stop switch (guarantee 6), separate from WorkflowRun's own
+/// per-run stopRequestedAt above. A brand-new table, never a column on the
+/// always-live `orgs` table.
+model OrgWorkflowControl {
+  orgId     String    @id
+  stoppedAt DateTime?
+  stoppedBy String?
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_workflow_controls")
+}
+
+/// Generalized agent output document (v2 — UC6 Handoff, UC7 Architecture plans, UC8's
+/// descoped QA fallback). One table, one shape, disambiguated by `type` — same pattern
+/// as `agents.role` covering research/copy/handoff/custom. See docs/willder_database.md.
+/// @memory
+model Brief {
+  id           String    @id @default(cuid())
+  orgId        String
+  type         BriefType
+  /// Who this was generated for (contractor/freelancer/new hire) — handoff only.
+  granteeName  String?
+  granteeRole  String?
+  /// The memory scope this brief was retrieved from — bounds what it could see.
+  /// AUTHORIZATION-BEARING: check() enforces against it, cast to ::ltree.
+  /// Always a real scope, org root for a scope-less run. Never a display
+  /// string; see scopeLabel below for that.
+  scopePath    String
+  /// Human-readable target label for a scope-less QA run (e.g. "(target)
+  /// acme.com") — display-only, never fed to check(). Null whenever scopePath
+  /// already holds a real memory scope.
+  scopeLabel   String?
+  title        String
+  summary      String
+  /// [{heading, content}]
+  sections     Json
+  /// Mermaid diagram text, if the output included one.
+  diagram      String?
+  /// draw.io (diagrams.net) link generated from the diagram.
+  diagramUrl   String?
+  /// Populated once exported via POST /api/briefs/:id/export-doc (drive.file OAuth).
+  googleDocUrl String?
+  /// [{label, dueDate}] — architecture_plan outputs with a schedule only, else null.
+  milestones   Json?
+  /// ChartSpec[] (types/agent-run.ts) — client-rendered SVG; NO server image rendering
+  /// (docs/demo-seed/07_contradiction_demo.md). Derived deterministically from structured data.
+  charts       Json?
+  /// DecisionFragment[] — architecture options-comparison artifacts (chart-gen §0.1); else null.
+  decisions    Json?
+  /// "single" | "manager" — which Handoff runner actually produced this brief, captured
+  /// at generation time so the completion receipt survives a reload. Null for a brief
+  /// generated before this column existed,
+  /// or a non-handoff brief type that never sets it. Display-only, never fed to check().
+  backend      String?
+  createdAt    DateTime  @default(now())
+
+  org        Org              @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// One row per source this brief could have drawn from that was moved out of
+  /// its reach or disconnected. Every read path treats a brief with any row as
+  /// absent.
+  retirements BriefRetirement[]
+  /// Which connected sources the generating run read from. Absent for a brief
+  /// whose run did not record it, which retirement treats as "could be any".
+  provenance BriefProvenance?
+  /// Sources an admin has ruled out as feeding this brief, after one withdrew it.
+  retirementWaivers BriefRetirementWaiver[]
+  /// The facts each section cites, re-checked by the staleness read.
+  citations BriefCitation[]
+
+  @@index([orgId])
+  @@index([orgId, type])
+  @@index([orgId, scopePath])
+  @@map("briefs")
+}
+
+/// A brief withdrawn because content it may quote from one source stopped being
+/// readable at its scope (services/memory/brief-retirement.ts). A brief is a copy
+/// of what it retrieved, so retiring a source's chunks and facts does not reach
+/// it; this row does. One row per withdrawing source, so bringing the brief back
+/// past one source leaves it withdrawn while any other row remains. Its own
+/// table rather than a column on `briefs`, so the live table and its queries are
+/// unchanged.
+/// @memory: names a brief and the source that withdrew it, which tells a reader the brief exists and what it drew on.
+model BriefRetirement {
+  briefId   String
+  /// The source whose move or disconnect withdrew the brief. Not a foreign key:
+  /// the record has to outlive what happens to that source row later.
+  sourceId  String
+  /// "source_moved" or "source_disconnected".
+  reason    String
+  /// Written before rows were kept per source, when a second source leaving an
+  /// already-withdrawn brief recorded nothing. Such a row cannot show that it is
+  /// the brief's only withdrawal, so it is never waived.
+  legacy    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  brief Brief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@id([briefId, sourceId])
+  @@map("brief_retirements")
+}
+
+/// One fact a brief quoted, as the generating agent retrieved it
+/// (services/memory/brief-citations.ts). A brief is a copy of what it read, so
+/// this row keeps the copy's source: GET /api/briefs/:id/staleness re-resolves
+/// `factId` at the brief's scope and compares it with `factText`, so a reader
+/// learns which cited facts changed, were superseded or are gone. Its own table
+/// rather than a column on `briefs`, so the live table and its queries are
+/// unchanged.
+/// @memory
+model BriefCitation {
+  id           String   @id @default(cuid())
+  briefId      String
+  /// Index into Brief.sections the fact supports.
+  sectionIndex Int
+  /// The fact's uuid as the store returned it: a graph edge or a memory chunk.
+  factId       String
+  /// The fact's text at generation time.
+  factText     String
+  createdAt    DateTime @default(now())
+
+  brief Brief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@unique([briefId, sectionIndex, factId])
+  @@index([briefId])
+  @@map("brief_citations")
+}
+
+/// The connected sources a brief's generating run retrieved content from
+/// (services/memory/brief-retirement.ts). With this row, moving or disconnecting
+/// a source withdraws only the briefs that actually read it; without it, every
+/// brief that could have read it. Its own table rather than a column on
+/// `briefs`, so the live table and its queries are unchanged.
+/// @memory: names a brief and every source its run read, which tells a reader the brief exists and what it drew on.
+model BriefProvenance {
+  briefId   String   @id
+  /// Every `Source.id` whose facts or chunks the run's memory reads returned.
+  /// Empty when the run read no source content at all.
+  sourceIds String[]
+  createdAt DateTime @default(now())
+
+  brief Brief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@map("brief_provenance")
+}
+
+/// An org admin's ruling that a brief withdrawn by a source did not draw from
+/// it (services/memory/brief-retirement.ts `unretireBrief`). The brief is
+/// readable again, and later moves or disconnects of that one source do not
+/// withdraw it a second time. Any other source still can.
+model BriefRetirementWaiver {
+  briefId   String
+  sourceId  String
+  /// The admin who made the ruling; the audit row `brief.unretired` names them too.
+  actorId   String
+  createdAt DateTime @default(now())
+
+  brief Brief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@id([briefId, sourceId])
+  @@map("brief_retirement_waivers")
+}
+
+enum BriefType {
+  handoff
+  architecture_plan
+  qa_review
+}
+
+/// A "pull request for memory" (UC9, docs/willder_conflict_resolution.md). App-state
+/// (Postgres) that sits above the Graphiti graph: it references a disputed edge uuid
+/// and tracks its governance state. Created ONLY for the same-tier-contradiction case
+/// (two peers disagree on a confirmed fact); the auto-merge case (provenance outranks)
+/// never lands here — it just invalidates-and-appends in Neo4j directly. The
+/// scope-admin resolution UI queries this for pending (`disputed`) rows.
+/// @memory
+model FactDispute {
+  id                String            @id @default(cuid())
+  orgId             String
+  /// ltree scope the disputed fact belongs to — bounds who can resolve it (scope admin).
+  scopePath         String
+  /// The disputed Graphiti RELATES_TO edge uuid (the existing/confirmed fact).
+  graphitiFactUuid  String
+  /// The proposing side's own edge uuid, when that side is a real graph edge (a scope
+  /// scan or an Architecture run). Null for a fresh correction with no edge yet, and for
+  /// rows filed before this column existed. Lets a scan de-dup on the edge pair.
+  proposerFactUuid  String?
+  /// Provenance of the incoming (proposing) assertion.
+  proposerActorType ActorType
+  proposerActorId   String
+  /// Provenance of the existing (confirmed) fact being contradicted.
+  existingActorType ActorType
+  existingActorId   String
+  status            FactDisputeStatus @default(disputed)
+  /// Set only for `resolved_reconciled` — the merged/authoritative value the resolver entered.
+  resolvedValue     String?
+  /// Internal User.id of the scope admin who resolved it.
+  resolverId        String?
+  resolvedAt        DateTime?
+  createdAt         DateTime          @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, status])
+  @@index([orgId, scopePath])
+  @@map("fact_disputes")
+}
+
+/// Provenance tiers, mirrored from types/memory.ts ActorType (human > agent > extraction).
+enum ActorType {
+  human
+  agent
+  extraction
+}
+
+/// Fact provenance: links a confirmed fact/decision to the
+/// PR/commit/file it was recorded from and tracks whether that source has since moved.
+/// Same "app-state above the Graphiti graph, references the edge uuid" shape as
+/// FactDispute (docs/willder_conflict_resolution.md's governance pattern), not a new
+/// engine: this is provenance-linking + a staleness flag, not fact-write governance.
+/// Deliberately does NOT hook the async ingest/distillation pipeline (lib/inngest.ts's
+/// runMemoryIngest can fan one human assertion out into several separate episodes before
+/// Graphiti extracts a fact uuid, so there is no single synchronous id to attach
+/// provenance to at write time) — provenance is linked to an EXISTING confirmed fact,
+/// the same way a fact dispute already is. Staleness is caller-reported, never polled:
+/// this table carries no GitHub/git integration (see checkFactStaleness in
+/// services/facts/provenance.ts).
+/// @memory
+model FactProvenance {
+  id               String               @id @default(cuid())
+  orgId            String
+  /// ltree scope the linked fact belongs to. Set once at creation from the caller's own
+  /// resolved scope (resolveCallerScopePath for capability callers, the same
+  /// scope-from-request-body-or-org-root shape memory/facts routes already use for
+  /// humans) — never re-derived from graphitiFactUuid, same precedent as
+  /// FactDispute.scopePath / app/api/facts/disputes/[id]/resolve's check() call.
+  scopePath        String
+  /// The Graphiti RELATES_TO edge uuid this provenance is attached to. Not a foreign
+  /// key (Graphiti lives in Neo4j, not this database) — same convention as
+  /// FactDispute.graphitiFactUuid.
+  graphitiFactUuid String
+  sourceType       FactSourceType
+  /// Free-form source identifier: a PR URL, "owner/repo@sha", or a repo-relative file
+  /// path. Never validated against a live GitHub/git call from this app; staleness
+  /// is reported by a caller who already has that access, not polled by Willder.
+  sourceRef        String
+  /// Commit sha (or PR head sha) the fact was recorded against, when the caller knows
+  /// it. Null means staleness can't be evaluated for this row yet (checkFactStaleness
+  /// skips it) until a later PATCH supplies one.
+  recordedRevision String?
+  /// Internal User.id notified when this flips to potentially_stale. Defaults to
+  /// whichever human/agent recorded the link.
+  ownerId          String
+  status           FactProvenanceStatus @default(fresh)
+  /// Set only when status flips to potentially_stale; never cleared automatically
+  /// (an owner dismissing or reconciling a flag is a follow-on UI). Flagging never
+  /// deletes or hides the underlying fact.
+  flaggedAt        DateTime?
+  flaggedReason    String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, scopePath])
+  @@index([orgId, graphitiFactUuid])
+  // (orgId, sourceType, sourceRef), not (orgId, sourceRef) alone: checkFactStaleness
+  // matches candidates on both together (services/facts/provenance.ts).
+  @@index([orgId, sourceType, sourceRef])
+  @@index([orgId, status])
+  @@map("fact_provenance")
+}
+
+enum FactSourceType {
+  pr
+  commit
+  file
+}
+
+enum FactProvenanceStatus {
+  fresh
+  potentially_stale
+}
+
+enum FactDisputeStatus {
+  disputed
+  resolved_proposer
+  resolved_existing
+  resolved_reconciled
+  rejected
+}
+
+// --- Phase F: signals, preferences, guardrails (Day 9) ----------------------
+// feedback_events: every human action on a draft (edit/approve/reject) and every
+// outcome (reply/booked) becomes a training signal. org_preferences: structured
+// per-org conditioning that shapes how the copy agent drafts.
+
+/// Append-only event log: every significant human judgment on a draft or outcome.
+/// These are training signals — diffs, decisions, outcomes — for future prompt tuning.
+model FeedbackEvent {
+  id           String            @id @default(cuid())
+  orgId        String
+  draftId      String?
+  eventType    FeedbackEventType
+  /// For `edited`: the agent's original body (before the human touched it).
+  originalBody String?
+  /// For `edited`: the human's version.
+  editedBody   String?
+  actorId      String? // internal User.id who triggered the event
+  meta         Json              @default("{}")
+  createdAt    DateTime          @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, eventType])
+  @@index([orgId, draftId])
+  @@map("feedback_events")
+}
+
+enum FeedbackEventType {
+  edited
+  approved
+  rejected
+  replied
+  booked
+}
+
+/// Per-org drafting preferences and operational guardrails (spend caps).
+/// Seeded lazily (upsert on first GET/PATCH). Structured so the UI can render
+/// labeled fields and the copy agent can inject them into its system prompt.
+model OrgPreference {
+  id    String @id @default(cuid())
+  orgId String @unique
+
+  // Drafting conditioning — injected into the copy agent's system prompt.
+  /// Override the campaign tone (e.g. "always warm, conversational, under 100 words").
+  toneOverride      String?
+  /// Topics the agent must never raise (e.g. "do not mention pricing").
+  forbiddenTopics   String?
+  /// Free-text instruction appended to the system prompt (escape hatch).
+  customInstruction String?
+  /// Preferred opening style (e.g. "start with a genuine observation, not a question").
+  preferredOpener   String?
+  /// Override the sender sign-off name (defaults to the org name from the campaign).
+  signOffName       String?
+  /// Display name used in the memory chat context (e.g. "the Sales team"). Defaults to the signed-in user's name.
+  memoryChatName    String?
+
+  // Operational guardrails (volume caps — enforced before the Inngest fan-out / send).
+  /// Max AI drafts the copy agent may generate per calendar day (UTC). Default: 200.
+  maxDraftsPerDay Int @default(200)
+  /// Max outbound sends per calendar day (UTC). Default: 100.
+  maxSendsPerDay  Int @default(100)
+
+  /// Set to true after the org completes the first-time onboarding flow.
+  onboardingDone Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_preferences")
+}
+
+// --- Knowledge sources (Drive connector, website crawl) -----------------------
+
+enum SourceType {
+  gdrive // Google Drive folder (Picker + drive.file)
+  website // crawled domain (Firecrawl)
+  slack // Slack channel (conversations.history, read-only)
+  figma // Figma file comments (read-only)
+  posthog // one named PostHog insight, via a customer-pasted personal API key
+  github // one repository (README, issues, PRs, commits), via a customer-pasted fine-grained token
+}
+
+/// How a connect handled the source being readable by fewer people than its scope.
+enum SourceWideningPath {
+  no_widening
+  acknowledged
+  acknowledged_unknown
+}
+
+enum SourceStatus {
+  active
+  syncing
+  error
+  disconnected
+}
+
+/// A connected knowledge source that syncs files/pages into memory. Separate from
+/// Integration (which is the send/receive mailbox). Every episode ingested from a
+/// source is tagged with `scopePath` so UC2 access control can filter by scope.
+/// @not-memory: connector configuration; its scopePath is where a sync writes, and the content lands in memory tables.
+model Source {
+  id              String       @id @default(cuid())
+  orgId           String
+  type            SourceType
+  /// Provider-side id: Drive folder id for gdrive, domain for website.
+  externalId      String
+  name            String // display name (folder name / domain)
+  /// ltree scope path stamped onto every episode from this source. Defaults to a
+  /// new child scope under the org root, created atomically on connect.
+  scopePath       String
+  status          SourceStatus @default(active)
+  /// A customer-pasted API key (posthog) or bot/personal-access token
+  /// (slack/figma), encrypted at rest via lib/crypto's sealSecret. Null for
+  /// gdrive, whose short-lived OAuth token is client-held and re-supplied on
+  /// every sync — and for slack/figma until the caller has entered one.
+  encryptedTokens String?
+  /// Non-secret metadata: Drive changes pageToken, last sync ISO, file count.
+  meta            Json         @default("{}")
+  /// The `audit_log` row of the connect that authorizes this source to write into
+  /// `scopePath`: the visible `memory.write` allow row `check()` wrote for the
+  /// `sources:connect` request (`app/api/sources/route.ts`). A sync is not a user
+  /// action and runs no `check()` of its own, so this connect is the authority under
+  /// which every later sync write happens, and every change event a sync writes
+  /// records it as its `authorizedById`.
+  ///
+  /// Rewritten by each connect and reconnect, because a reconnect is a fresh
+  /// authorization against a possibly different scope. Nullable, and no foreign key:
+  /// a row connected before this column existed carries none rather than a guess.
+  connectAuthorizationId String?
+  /// Whether this connect let more people or agents read the source's content than
+  /// can read it at the source, and how that was decided
+  /// (services/access/source-widening.ts): `no_widening` when the source reported its
+  /// readers, none of the scope's people were missing from them and no agent could
+  /// read the scope, `acknowledged` when some could and the person connecting
+  /// confirmed both counts, `acknowledged_unknown` when the source could not report
+  /// its readers and the person connecting confirmed anyway.
+  ///
+  /// Rewritten with the five columns below by each connect and reconnect, beside
+  /// `connectAuthorizationId`, because a reconnect is a fresh decision. Null on a row
+  /// connected before these columns existed: nobody decided, and none is guessed.
+  connectWideningPath    SourceWideningPath?
+  /// How many more people can read the content through Willder than at the source.
+  /// Null when the source could not report its readers (`acknowledged_unknown`).
+  connectWideningCount   Int?
+  /// How many agents can read the content through Willder: those holding a live
+  /// capability token covering the scope. No agent reads at the source, so this is
+  /// known even when the people count is not. Null only on a row connected before
+  /// agents were counted.
+  connectWideningAgentCount Int?
+  /// The User.id of the person whose connect took the path above.
+  connectWideningById    String?
+  connectWideningAt      DateTime?
+  /// The `audit_log` row recording the acknowledgement; null on `no_widening`, which
+  /// had nothing to acknowledge.
+  connectWideningAuditId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  org   Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  files SourceFile[]
+
+  @@unique([orgId, type, externalId])
+  @@index([orgId])
+  @@index([orgId, scopePath])
+  @@map("sources")
+}
+
+/// Per-file idempotency record. Re-sync skips a file if checksum unchanged.
+model SourceFile {
+  id                     String    @id @default(cuid())
+  sourceId               String
+  /// Drive file id (or URL for website pages).
+  externalFileId         String
+  /// The Drive file's change key: a sha256 digest of its md5Checksum (or modifiedTime for
+  /// Google-native formats) together with its name, so a rename is synced and no file
+  /// name is stored here (services/connectors/gdrive.ts).
+  checksum               String
+  /// Graphiti episode id produced by the last successful ingest of a
+  /// connector text item (Slack, Figma, PostHog), which is always one episode.
+  /// Null for Drive files, which use `episodeIds` below. A Drive row written
+  /// before `episodeIds` existed holds the file-ingest job's event id here:
+  /// not an episode, so never retired through this column.
+  episodeId              String?
+  /// Graphiti episode ids from the last successful ingest of a Drive file: one
+  /// per extracted chunk. Empty for text items and once retired.
+  episodeIds             String[]  @default([])
+  /// `memory_chunks` ids written alongside `episodeIds` for the same Drive
+  /// file, so the raw chunks retire with the episodes. Empty for text items.
+  chunkIds               String[]  @default([])
+  /// Graphiti group_id the episodes in `episodeId`/`episodeIds` were actually
+  /// written under, captured at write time. `Source.scopePath` is mutable (a
+  /// reconnect can move it) while an episode stays in the partition it was
+  /// written to, so retiring one has to address THIS scope, not the source's
+  /// current one. Null for rows written before this column existed, and for a
+  /// row whose episodes have already been retired.
+  episodeScopePath       String?
+  /// Set just before an episode in `episodeId` or `episodeIds` is deleted from the
+  /// graph, and cleared by the write that drops that pointer. A Drive file's
+  /// episodes are deleted one at a time, so the mark names the first one still in
+  /// `episodeIds`. Still set on a later sync means
+  /// an earlier attempt may have deleted the episode and then failed to record it,
+  /// so the store's not-found is that attempt's work rather than an error.
+  episodeRetireStartedAt DateTime?
+  syncedAt               DateTime  @default(now())
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, externalFileId])
+  @@index([sourceId])
+  @@map("source_files")
+}
+
+// Entity alias registry — maps aliases/pronouns/relational refs to canonical entity
+// names so the resolver normalizes text before Graphiti sees it. One row per entity;
+// aliases[] grows as the org learns new references for the same entity.
+/// Memory although it has no scopePath: a merge records the merged entity's old name
+/// here, a name taken from the graph at that entity's scope. Read and written through
+/// services/memory/entity-aliases.ts, which decides at the org root.
+/// @memory
+model EntityAlias {
+  id            String   @id @default(cuid())
+  orgId         String
+  entityType    String // "user" | "account" | "contact" | "org"
+  entityId      String // Postgres id of the linked entity
+  canonicalName String // the name Graphiti should always receive
+  aliases       String[] // nicknames, emails, domains, relational refs
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, entityId])
+  @@index([orgId])
+  @@map("entity_aliases")
+}
+
+/// Semantic chunk store backed by pgvector. Holds raw content + BGE-384 embeddings
+/// for long-form documents and conversational memory. Prisma has no vector type, so
+/// `embedding` is declared Unsupported and read and written only through raw SQL; its
+/// ivfflat index is created by the migrations. Both are declared here so that
+/// `prisma migrate dev` sees them as existing and never generates a migration that
+/// drops them. Access control is enforced at the GuardedMemoryStore layer.
+/// @memory
+model MemoryChunk {
+  id        String                      @id @default(cuid())
+  orgId     String
+  content   String
+  source    String                      @default("text")
+  actorType String                      @default("extraction")
+  actorName String?
+  /// User id or agent id that wrote this version. Never a capability token. Null for
+  /// rows written before this column existed, and for stores that record no actor id.
+  actorId   String?
+  /// Entity name the ingest was about ("Acme Corp"), as the writer gave it. This is the
+  /// contention key: two writes with the same name in the same scope are two versions of
+  /// one fact (services/memory/conflict.ts). Null for rows written before this column
+  /// existed and for ingests that name no entity.
+  entityName String?
+  scopePath String?
+  /// The connector Source.id that ingested this chunk, when it came from a connector sync
+  /// (Slack/Figma/Drive). Null for chat replies, manual facts, and document
+  /// uploads -- none of those go through a Source. Lets DELETE
+  /// /api/sources/:id purge exactly one source's own content even when it
+  /// shares scopePath with another source or with directly-ingested org
+  /// memory, instead of purging (or refusing to purge) the whole scope.
+  sourceId  String?
+  /// The upload (`UploadedFile.id`) this passage was extracted from. Null for every other
+  /// writer. Lets DELETE /api/memory/uploads/:id remove exactly one upload's passages, and
+  /// lets a person erasure find the raw file a removed passage came from.
+  uploadId  String?
+  /// The content's identity within its scope (services/memory/ingest-content-key.ts),
+  /// set by the write-through ingest path so a retried identical ingest keeps one
+  /// row. Null for every other writer; the unique index treats nulls as distinct.
+  contentKey String?
+  /// Whether this row is a version of the fact `entityName` names. True when the
+  /// memory_ingest path stored it as one (`PgvectorMemoryStore.ingestOnce`); false for
+  /// every other writer, whose row may share the name without being a version of it.
+  /// Null on rows stored before this column existed: such a row is a version only if
+  /// the change feed announced it as a fact (services/memory/conflict.ts, `factVersionSql`).
+  factVersion Boolean?
+  /// The version this one was written to replace, as its writer named it in memory_ingest's
+  /// `baseVersion`. Set by `PgvectorMemoryStore.ingestOnce` only, on the row it marks a
+  /// version; null for a write that named no base and for rows stored before this column
+  /// existed. An entity name holds many facts, so this, not the name, is what says that
+  /// two rows stored before either is announced are versions of ONE fact
+  /// (services/memory/fact-update.ts).
+  baseVersionId String?
+  /// What this version is to the task that wrote it, as its writer declared it on
+  /// memory_ingest (services/memory/fact-roles.ts). The task-start block serves a task's
+  /// facts that decide it ahead of its progress notes. Null when the writer declared none,
+  /// which every row stored before this column existed is.
+  role      FactRole?
+  embedding Unsupported("vector(384)")?
+  /// When the content happened, as its writer stated it through memory_ingest's `occurredAt`
+  /// (IngestInput.occurredAt); no other writer fills it today. Never later than the moment
+  /// the row is written. A read dates the chunk by it, and by `createdAt` when it is null,
+  /// which every row stored before this column existed is. Erasure and conflicts still
+  /// judge a row by `createdAt`.
+  occurredAt DateTime?
+  /// When the server received the write that stored this version, on the database's clock
+  /// and before its embedding call (services/memory/received-at.ts); never later than
+  /// `createdAt`. Set by `PgvectorMemoryStore.ingestOnce` on the rows it marks a version.
+  /// Null for every other writer and on rows stored before this column existed; a null
+  /// reads as `createdAt`. Whether two versions were written within the contention window
+  /// is judged by it (services/memory/conflict.ts), so embedding latency cannot turn a
+  /// concurrent write into a later one. Which of two versions wins is still stored order.
+  receivedAt DateTime?
+  createdAt DateTime                    @default(now())
+  /// The order rows were inserted in: taken from a sequence by the INSERT that stores the
+  /// row, so unique and never tied, unlike `createdAt` (a millisecond holds many rows) or
+  /// `id` (random). Which of two versions was stored first is (`createdAt`, `storedSeq`)
+  /// (services/memory/conflict.ts, fact-update.ts, fact-reads.ts), so this settles a pair
+  /// that shares a millisecond. Rows stored before the column existed are numbered in
+  /// (`createdAt`, `id`) order. Internal ordering only: never returned to a reader, since
+  /// the gap between two values counts other orgs' rows.
+  storedSeq BigInt                      @unique @default(autoincrement())
+
+  org      Org                  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  upload   UploadedFile?        @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  reads    FactVersionRead[]
+  passages MemoryChunkPassage[]
+  /// Task-start lines that showed this version, and later calls that used it: removed with it.
+  servedOn TaskStartServedItem[]
+  usedBy   TaskStartItemUse[]
+  /// Present while this version's graph extraction failed and waits for another attempt.
+  graphExtractionRetry GraphExtractionRetry?
+
+  @@unique([orgId, contentKey])
+  @@index([orgId])
+  @@index([orgId, scopePath])
+  @@index([orgId, sourceId])
+  @@index([orgId, uploadId])
+  @@index([orgId, entityName, createdAt])
+  @@index([embedding], map: "memory_chunks_embedding_idx")
+  @@index([content(ops: raw("gin_trgm_ops"))], type: Gin, map: "memory_chunks_content_trgm_idx")
+  @@map("memory_chunks")
+}
+
+/// A file a person uploaded, and its raw copy in Vercel Blob (lib/blob-storage.ts). The
+/// raw file is kept until the file is removed (DELETE /api/memory/uploads/:id), a person
+/// erasure removes a passage of it, or its org is deleted, because it has no other home
+/// and an export of memory hands it back. A Drive file has no row: Drive holds it, and its
+/// blob is deleted once extracted. Removal goes through services/memory/uploads.ts.
+/// @memory
+model UploadedFile {
+  id         String    @id @default(cuid())
+  orgId      String
+  /// The scope the upload was written to: reading the raw file needs memory.read here,
+  /// removing it memory.delete.
+  scopePath  String
+  filename   String
+  fileType   String
+  /// The private blob holding the raw file. Never served to a client.
+  blobUrl    String    @unique
+  /// The user who uploaded it.
+  actorId    String
+  /// The file-ingest job's event id: the `jobId` the upload returned, and the id its
+  /// document change event carries. Null until the job is queued.
+  documentId String?
+  /// Set by the transaction that removes the file. The row is deleted once its blob is;
+  /// a row still marked is a blob owed a delete, finished by the next removal in the org.
+  removedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  org    Org           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  chunks MemoryChunk[]
+
+  @@index([orgId, scopePath])
+  @@map("uploaded_files")
+}
+
+/// One overlapping window of a long memory_chunks row, embedded on its own
+/// (services/memory/passages.ts). The embedding model reads only a text's first 512
+/// tokens; a row's passages let vector search see the rest of it. Holds no text, only
+/// its position among the row's passages, and is never served: a search can find the row
+/// by its best passage and serves the row. Deleted with its row. `embedding` has an HNSW
+/// index, created by the migration.
+/// @memory
+model MemoryChunkPassage {
+  chunkId   String
+  /// 0 for the passage at the start of the row, then in order.
+  ordinal   Int
+  embedding Unsupported("vector(384)")
+
+  chunk MemoryChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@id([chunkId, ordinal])
+  @@index([embedding], map: "memory_chunk_passages_embedding_idx")
+  @@map("memory_chunk_passages")
+}
+
+/// A stored version whose graph extraction failed after the write was acknowledged, kept
+/// until a later attempt extracts it (services/memory/graph-extraction-retry.ts). It holds the
+/// ingest's settings, not its text: the text is the version's own row, so deleting or
+/// erasing that row removes this one with it.
+model GraphExtractionRetry {
+  /// The version (`MemoryChunk.id`) whose extraction is owed.
+  chunkId       String   @id
+  orgId         String
+  /// The ingest as the job received it, without its content and its stated date.
+  job           Json
+  /// Failed attempts so far, the first included.
+  attempts      Int      @default(1)
+  /// The latest failure as the memory service named it; never a credential.
+  lastError     String
+  nextAttemptAt DateTime
+  /// Graphiti's reference time for the retry: the write's own occurredAt, else the version's
+  /// receivedAt (scope v2 C7). NULL (older rows) reads as the version's createdAt.
+  referenceAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  chunk MemoryChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@index([nextAttemptAt])
+  @@index([orgId])
+  @@map("graph_extraction_retries")
+}
+
+/// What a fact version is to the task that wrote it (services/memory/fact-roles.ts).
+enum FactRole {
+  cause // why the task exists or what went wrong
+  constraint // a limit the work must stay inside
+  decision // a choice later work must follow
+  rejected // an option considered and turned down
+  progress // what was done or where the work stands
+}
+
+/// One stored version of a fact that an agent has been shown: served in full by
+/// memory_query, memory_entity, memory_version or memory_ingest's own reply, or seen
+/// only as a line of the change feed (memory_changes, a change notice, the task-start
+/// block). It is what lets a write that names no `baseVersion` still be checked against
+/// what its writer read (services/memory/fact-reads.ts).
+///
+/// One row per (agent, version), however often it is shown; a full read upgrades a
+/// sighting, never the reverse. Removed with the version.
+model FactVersionRead {
+  id           String   @id @default(cuid())
+  orgId        String
+  /// The agent id the capability names. Never a capability token.
+  agentId      String
+  versionId    String
+  /// When the agent was first shown the version as it is recorded now: first sighted,
+  /// or first read whole once a read upgraded the sighting. Only a read or sighting made
+  /// before a write was stored counts for that write.
+  readAt       DateTime @default(now())
+  /// True while the agent has seen this version only as a change-feed line, whose text
+  /// may be cut short. Such a sighting puts the agent's writes under the stale-read
+  /// rule but never counts as having read the version.
+  sightingOnly Boolean  @default(false)
+
+  org     Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  version MemoryChunk @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, agentId, versionId])
+  @@index([versionId])
+  @@map("fact_version_reads")
+}
+
+/// One scope an agent has been shown content from, and when it last was: the taint the
+/// derived-write rule reads (services/access/derived-writes.ts). A write into scope B while
+/// a scope outside B's subtree is held here is refused unless the write declares the share.
+/// A row never expires: an idle gap does not end the agent's context window, so no time
+/// limit makes it untainted again. `lastReadAt` is for operators; no decision reads it.
+/// @not-memory: scope paths an agent was shown content from, never the content itself.
+model SessionScopeRead {
+  orgId      String
+  /// The agent id the capability names. Never a capability token.
+  agentId    String
+  /// ltree path of the scope the content was stored in.
+  scopePath  String
+  lastReadAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@id([orgId, agentId, scopePath])
+  @@map("session_scope_reads")
+}
+
+/// Click-through interest on the founder-rate pricing CTA. Not a real waitlist UI —
+/// just an ordered log (createdAt = queue position) so real signal can be checked
+/// later without building billing infra nobody's asked for yet.
+model FounderInterest {
+  id          String   @id @default(cuid())
+  clerkUserId String?
+  email       String?
+  createdAt   DateTime @default(now())
+
+  @@map("founder_interest")
+}
+
+/// Operation recorded on a change event. `supersede` is a replacement that keeps
+/// the old record readable; `delete` removes it; `revoke` is an access change
+/// (a grant or capability withdrawn) that may make previously visible records
+/// unreadable, which a reader has to learn about even though no record changed.
+enum ChangeOp {
+  create
+  update
+  supersede
+  delete
+  revoke
+}
+
+/// Real-time memory change feed. One row per governed write, inserted
+/// in the SAME transaction as the write it describes, so the feed can never claim a
+/// change that was rolled back or miss one that committed.
+///
+/// The one rule this table enforces: `seq` is assigned under a per-org advisory lock
+/// held to commit, so `seq` order is commit order. A reader that has consumed up to
+/// `seq = N` can take "everything with seq > N" and know nothing older is still in
+/// flight -- see services/memory/change-events.ts.
+///
+/// Rows are NOT access-filtered on write. `scopePath` is copied from the record the
+/// event describes, and readers filter on it at query time against live grants, so a
+/// grant revoked after the event was written applies to the event too.
+/// @memory
+model ChangeEvent {
+  /// The feed's public cursor, so it is deliberately a random UUID rather than the
+  /// cuid the rest of this schema uses: a cuid embeds a timestamp and a monotonic
+  /// counter, and a cursor a reader can order or difference is the `seq` leak this
+  /// column exists to avoid.
+  id         String   @id @default(uuid(4))
+  orgId      String
+  /// Per-org monotonic, gapless, and in commit order. Not globally unique: two orgs
+  /// both have a seq 1. Internal ordering only -- never returned to a reader, because
+  /// the distance between two readable seqs counts the writes hidden in between
+  /// (services/memory/change-feed.ts).
+  seq        BigInt
+  /// ltree scope of the record this event describes, copied from that record at
+  /// write time. Readers filter on it; it is never used to decide what to write.
+  scopePath  String
+  /// Table-independent name of what changed, e.g. "fact", "brief", "source".
+  recordType String
+  recordId   String
+  op         ChangeOp
+  /// Who made the change: a user id or an agent id. Never a capability token.
+  actorId    String
+  /// The principal type of `actorId`: "human", "agent", or "extraction" for a system
+  /// job such as a connector sync. Null on events written before it was recorded.
+  actorType  String?
+  /// The entry point the change came in through (services/access/origin.ts), the
+  /// source NIST AU-3 asks an audit record for. Null on events written before it was
+  /// recorded; never filled in after the fact.
+  origin     String?
+  /// At most 200 characters, built from the record's own title or first line by
+  /// summarizeChange(). Deterministic string handling only -- no model runs in a
+  /// write path. Inherits the record's scope, so it is only ever shown to a reader
+  /// already authorized for `scopePath`.
+  summary    String
+  /// The `audit_log` row of the authorization that gated this change: the visible
+  /// `memory.write`/`memory.delete` allow row `check()` wrote before the store write
+  /// ran (`services/access/check.ts`'s `recordAudit`). It is the change identifier the
+  /// audit trail exposes: `GET /api/audit` returns it as each row's `changeId`, so a
+  /// reader of the visible log can say which change a write authorization produced
+  /// without the confirmed-applied rows, which carry `visibility: "never"`.
+  ///
+  /// Nullable, and no foreign key: a change with no single authorization behind it
+  /// (a connector sync's own writes, a concurrent write's supersede of the version it
+  /// beat) records none rather than borrowing another change's row, and events written
+  /// before this column existed stay null rather than being guessed at.
+  authorizedById String?
+  /// The task the write was made for: the `willder/task` key its writer's MCP session
+  /// sent (mcp/task-start-notice.ts). The task-start block serves a later session of the
+  /// same task what was decided and written under it (services/memory/task-start.ts).
+  /// A free-form, client-supplied label, never used to authorize anything. Null when
+  /// the writer named no task, and on every event written before this column existed.
+  task       String?
+  /// The session the write was made in: the `willder/session` its writer's call named, else
+  /// the MCP connection's session (mcp/task-start-notice.ts, sessionKeyOf). It links a claim
+  /// to the evidence its own session recorded (services/memory/claim-status.ts): a captured
+  /// test run of the same session, never another's. A client-supplied label, never used to
+  /// authorize anything. Null when the writer named no session, and on every event written
+  /// before this column existed.
+  sessionKey String?
+  createdAt  DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, seq])
+  @@index([orgId, authorizedById])
+  @@index([orgId, task, seq])
+  /// A brief's staleness check: did a source it read change after it was generated
+  /// (services/memory/brief-staleness.ts).
+  @@index([orgId, actorId, createdAt])
+  @@map("change_events")
+}
+
+/// How far one agent has been served through its org's change feed, so "what
+/// changed since I last looked" needs no client state.
+///
+/// Keyed on the agent, not on the capability token it happens to present: a
+/// re-minted token for the same agent continues where the old one left off
+/// rather than replaying the org's history. The cursor is only a position --
+/// what an agent may actually see is decided at read time, against its live
+/// grants, every time it reads.
+model AgentCursor {
+  id          String    @id @default(cuid())
+  orgId       String
+  agentId     String
+  /// Highest `ChangeEvent.seq` this agent has been served through. Events at or
+  /// below it are never returned again, whether or not they were readable then.
+  lastSeq     BigInt
+  /// Set when this agent was denied reading its own scope, cleared the next time it
+  /// is served the feed. Lets a denial be audited once, not once per poll.
+  deniedSince DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, agentId])
+  @@map("agent_cursors")
+}
+
+/// Someone who asked for launch updates from the public landing page. Not tied to
+/// an org: these are prospects, not users.
+///
+/// Double opt-in: a row starts pending (`confirmedAt` null) and only a click on
+/// the emailed link confirms it. Only confirmed rows are mirrored to the Resend
+/// segment. `unsubscribedAt` wins over everything else and is never cleared by a
+/// stale confirmation link; signing up again starts a fresh pending opt-in.
+model UpdateSubscriber {
+  id                 String    @id @default(cuid())
+  /// Lowercased and trimmed before it is stored, so one address is one row.
+  email              String    @unique
+  /// Path of the page the form was submitted from, e.g. "/".
+  sourcePage         String
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  /// SHA-256 of the secret sent in the confirmation and unsubscribe links. The
+  /// secret itself is never stored. Rotated on every new confirmation email.
+  tokenHash          String    @unique
+  /// When the person submitted the form under the consent sentence.
+  consentedAt        DateTime
+  /// Last confirmation email sent; a second one is not sent within the cooldown.
+  confirmationSentAt DateTime?
+  confirmedAt        DateTime?
+  unsubscribedAt     DateTime?
+  /// Last time the Resend segment was brought in line with this row. Null means
+  /// the mirror has never succeeded, so the database is the only record.
+  mirroredAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("update_subscribers")
+}
+
+/// What kind of standing rule a {@link Convention} row records. A `convention` is how
+/// this org does something ("dedupe accounts by domain"); a `decision` is a choice
+/// someone made that later work must follow until it is superseded.
+enum ConventionKind {
+  convention
+  decision
+}
+
+/// A standing rule an agent should know before it starts work in a scope, served
+/// unasked at the start of each session (services/memory/task-start.ts).
+///
+/// The one rule this table enforces: a rule is never edited, only superseded, and it
+/// can be superseded once. The replacement names the rule it replaces in
+/// `supersedesId`, which is unique, so two writers racing to replace the same rule
+/// cannot both succeed. The rules in force in a scope are the rows no other row
+/// supersedes, that lost no race (`supersededById`) and that were not retired
+/// (`retiredAt`).
+/// @memory
+model Convention {
+  id           String         @id @default(cuid())
+  orgId        String
+  /// ltree scope the rule applies to. Readers filter on it against live grants.
+  scopePath    String
+  kind         ConventionKind
+  /// What the rule is about, e.g. "Account dedupe". Shown before `text`.
+  subject      String
+  text         String
+  /// User id or agent id that recorded the rule. Never a capability token.
+  actorId      String
+  /// The rule this one replaces. Unique: a rule has at most one replacement.
+  supersedesId String?        @unique
+  /// Set when this version lost a race to replace the same rule: the id of the version
+  /// that won it. The row is kept so the refusal the loser was given points at a real,
+  /// readable version; it is never served as current. Null for every other row.
+  supersededById String?
+  /// When the rule was retired, so it stops being served without being replaced
+  /// (services/memory/conventions.ts `retireConvention`). Null while it is in force.
+  retiredAt    DateTime?
+  /// User id or agent id that retired the rule. Never a capability token.
+  retiredBy    String?
+  createdAt    DateTime       @default(now())
+
+  org        Org         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  supersedes Convention? @relation("ConventionSupersedes", fields: [supersedesId], references: [id], onDelete: NoAction)
+  replacedBy Convention? @relation("ConventionSupersedes")
+
+  @@index([orgId, createdAt])
+  @@index([orgId, scopePath, retiredAt])
+  @@map("conventions")
+}
+
+/// What a working note says about the work in progress.
+enum WorkingNoteKind {
+  /// "I am doing this": the one kind another agent's claim on the same task is checked against.
+  claim
+  /// "I am about to try this."
+  intent
+  /// "This is where it stands."
+  status
+  /// "Does anyone know this?"
+  question
+}
+
+/// @memory
+/// A working note: one short line an agent posts about what it is doing right now
+/// (services/memory/working-notes.ts). Short-lived by design: it is live until
+/// `expiresAt` or `releasedAt`, whichever comes first. A note past either is no longer
+/// served as live: change notices and the task-start block leave it out and a new claim
+/// is not checked against it, while its change events stay in the feed, so
+/// memory_changes and GET /api/changes still list its post. Expired and released rows
+/// are kept; nothing purges them.
+///
+/// Each post, renewal and release appends a `change_events` row (recordType "note") in
+/// the same transaction, so notes reach other agents through the change feed, its
+/// cursor and its access filter, with no delivery path of their own.
+model WorkingNote {
+  id         String          @id @default(cuid())
+  orgId      String
+  /// ltree scope the note was posted in. Readers filter on it against live grants.
+  scopePath  String
+  /// The agent that posted it. Never a capability token.
+  agentId    String
+  /// What the note is about, as the poster named it: the key two claims collide on.
+  task       String
+  kind       WorkingNoteKind
+  /// At most 280 characters.
+  body       String
+  /// Set at post time and moved forward by each renewal. At most four hours ahead.
+  expiresAt  DateTime
+  /// When the poster released it; null while it has not been.
+  releasedAt DateTime?
+  createdAt  DateTime        @default(now())
+  /// For a claim, the files the claimant edits, as node ids (`file:<repo>/<path>`): paths only,
+  /// never contents. Empty unless the org turned claim overlap on (services/memory/claim-overlap.ts).
+  touches    String[]        @default([])
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, expiresAt])
+  /// Serves `touches && $new`, the one overlap query a claim post makes.
+  @@index([touches], type: Gin)
+  @@map("working_notes")
+}
+
+/// @not-memory: delivery bookkeeping; its scopePath is the scope a block was read for, and it holds no content.
+/// The `delivered_to` edge for the task-start block: which session of which agent
+/// was served its conventions and run state, for which scope and task, and at what
+/// revision.
+///
+/// One row per (org, agent, session, scope, task). A session is the caller-named
+/// `_meta["willder/session"]` of a tool call or `X-Willder-Session` of a hook poll,
+/// else the MCP connection the call arrived on ("mcp:<id>", mcp/connection-session.ts),
+/// and for a client that names neither, the span of calls with no gap longer than the
+/// idle window (services/memory/task-start.ts). The block is served on the first call
+/// of a session for a task and scope and never again within it; later changes reach
+/// the session through the change feed instead.
+model TaskStartDelivery {
+  id          String   @id @default(cuid())
+  orgId       String
+  agentId     String
+  /// The session: the caller-named one, else the MCP connection's ("mcp:<id>",
+  /// mcp/connection-session.ts), or "" when neither names one.
+  sessionKey  String
+  /// The scope the block was read for: the capability token's own scope.
+  scopePath   String   @default("")
+  /// The task the session named, or "" when it named none.
+  taskKey     String   @default("")
+  /// Revision token of the block last served to this session: the shared format in
+  /// services/memory/revision.ts. Equality only; it orders nothing.
+  revision    String
+  deliveredAt DateTime @default(now())
+  /// Last tool call seen from this session, for the idle window.
+  lastCallAt  DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, agentId, sessionKey, scopePath, taskKey], map: "task_start_deliveries_delivery_key")
+  @@map("task_start_deliveries")
+}
+
+/// @not-memory: a served log of ids and positions; its scopePath is the scope a block was read for, and it holds no content.
+/// One item the task-start block served: which record, on which of the block's lines, to which
+/// session, for which task (services/memory/task-start-served.ts). Like a search engine's
+/// impression log it is written once, in the statement that claims the delivery, and never
+/// updated; whether the session then used the item is joined later from TaskStartItemUse.
+model TaskStartServedItem {
+  id         String   @id @default(cuid())
+  orgId      String
+  agentId    String
+  /// The session, as TaskStartDelivery keys it, or "" when none is named (its uses cannot be told apart).
+  sessionKey String
+  /// The scope the block was read for: the capability token's own scope.
+  scopePath  String
+  /// The task the session named, or "" when it named none.
+  taskKey    String
+  /// One id per block served: the rows of one serving share it.
+  servingId  String
+  /// The 1-based position of the item's line among the block's item lines, headings left out.
+  position   Int
+  /// How many item lines the serving's block had, so a reader can tell when some of its rows were
+  /// removed (an erased version) rather than never served.
+  lineCount  Int
+  /// What the line shows: "convention", "fact", "change", "note" or "provenance".
+  itemType   String
+  /// The record's own id within `itemType`.
+  itemId     String
+  /// The id the line names, which a later call would quote: a change line names its record.
+  namedId    String
+  /// The fact version the line shows, when it shows one. Deleting the version, as a person
+  /// erasure does, deletes the row.
+  versionId  String?
+  servedAt   DateTime @default(now())
+
+  org     Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  version MemoryChunk? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, agentId, sessionKey, namedId])
+  @@index([servedAt])
+  @@index([orgId, namedId])
+  @@index([versionId])
+  @@map("task_start_served")
+}
+
+/// A later tool call of a session that named or returned an item its task-start block had
+/// served it (services/memory/task-start-served.ts). Holds the id and where in the call it
+/// appeared, never the call's text.
+model TaskStartItemUse {
+  id         String   @id @default(cuid())
+  orgId      String
+  agentId    String
+  sessionKey String
+  /// The served line's `namedId` the call carried.
+  namedId    String
+  /// The fact version the served line showed, when it showed one; removed with it.
+  versionId  String?
+  /// Where the id appeared: the call's top-level argument name, or "result" for the tool's own reply.
+  field      String
+  /// When the call began, on the database's clock, less a margin (USE_AFTER_SERVE_MARGIN_MS).
+  calledAt   DateTime
+
+  org     Org          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  version MemoryChunk? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, agentId, sessionKey, namedId])
+  @@index([calledAt])
+  @@index([orgId, namedId])
+  @@index([versionId])
+  @@map("task_start_item_uses")
+}
+
+enum PersonErasureStatus {
+  running
+  done
+  failed
+}
+
+/// One accepted POST /api/access/erasure, run by a background job
+/// (services/memory/person-erasure-requests.ts). Its id is the request id the erasure's
+/// audit rows carry. The person it names is kept only while it runs: the column is cleared
+/// in the transaction that finishes the erasure, and when it fails.
+model PersonErasureRequest {
+  id              String              @id
+  orgId           String
+  /// The person who asked (users.id) and their role in the org then: the job acts as them.
+  requestedBy     String
+  requesterRole   UserRole
+  origin          String
+  /// contactId, email or entityId, and its value; both null once the request is done or failed.
+  identifierKind  String?
+  identifierValue String?
+  status          PersonErasureStatus @default(running)
+  /// The finished erasure's counts (the API's result body), never a value it erased.
+  result          Json?
+  /// Why a failed request did not finish, in words a caller can act on.
+  error           String?
+  createdAt       DateTime            @default(now())
+  /// When the stuck-request sweep queued its job again; a request still running long after is failed.
+  retriedAt       DateTime?
+  completedAt     DateTime?
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("person_erasure_requests")
+}
+
+/// What an erased person can still be recognized by, so a connector re-sync does not
+/// write them back into the org (services/memory/erasure-suppression.ts). Holds a
+/// digest of the address or the normalized full name, never the value itself.
+model ErasureSuppression {
+  id        String   @id @default(cuid())
+  orgId     String
+  /// "email", "name", "text_name", "joined_name", "record_name", "record_name_reversed",
+  /// "contact_id", "version_id" or "rule_id" (services/memory/erasure-suppression.ts,
+  /// SuppressionKind).
+  kind      String
+  /// SHA-256 over the org id, the kind and the normalized value.
+  digest    String
+  /// How many words the name had, so a reader knows which runs of words to test.
+  /// Null for an email.
+  wordCount Int?
+  /// The erasure request that recorded this row (its `person_erasure:<id>` audit target).
+  requestId String
+  createdAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  applied ErasureSuppressionApplied?
+
+  @@unique([orgId, kind, digest])
+  @@map("erasure_suppressions")
+}
+
+/// That what one suppression list entry stands for has been removed from this database: the
+/// erasure that recorded it finished, a re-apply after a restore covered it, or it was written
+/// in the transaction that removed what it names (services/memory/erasure-suppression.ts,
+/// markApplied). A restore that copies the list back over an older backup brings these back
+/// as they stood then, so the entries added since read as not applied until the re-apply runs.
+model ErasureSuppressionApplied {
+  orgId     String
+  kind      String
+  digest    String
+  /// What carried it out: `person_erasure:<requestId>`, `reapply:<runId>`, the request id of a
+  /// live removal, or `backfill`.
+  by        String
+  appliedAt DateTime @default(now())
+
+  org         Org                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  suppression ErasureSuppression @relation(fields: [orgId, kind, digest], references: [orgId, kind, digest], onDelete: Cascade)
+
+  @@id([orgId, kind, digest])
+  @@map("erasure_suppressions_applied")
+}
+
+/// An org whose suppression list gained entries this database did not list itself, so a
+/// restore copied the live list back and its erasures are not yet re-applied here. Written by a
+/// trigger on erasure_suppressions (migration 20261019100000_erasure_reapply_due); while it
+/// exists check() refuses everything in the org but access.manage, and completeRestore deletes
+/// it once the org's erasures read as applied (services/memory/erasure-reapply.ts).
+model ErasureReapplyDue {
+  orgId String @id
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("erasure_reapply_due")
+}
+
+/// How one fact relates to another. The direction is always from the newer or dependent
+/// record to the one it rests on: `derivedFrom` points from a brief to a source fact,
+/// `supersedes` from a replacement to the version it replaced, `dependsOn` from the
+/// dependent to its dependency, `causedBy` from an effect to its cause. `ownedBy` and
+/// `deliveredTo` point from a fact to an owner or a recipient.
+enum FactEdgeKind {
+  derivedFrom
+  supersedes
+  dependsOn
+  ownedBy
+  deliveredTo
+  causedBy
+}
+
+/// The dependency graph between facts: one row per directed edge. Facts themselves live in the memory stores and
+/// in `briefs`/`conventions`, so `fromId` and `toId` are record ids, not foreign keys,
+/// the same convention as FactProvenance.graphitiFactUuid.
+///
+/// The one rule this table enforces: an edge is recorded once. The unique key makes a
+/// retried write a no-op instead of a duplicate, so a count of dependents is a count
+/// of records, never of attempts. `scopePath` is copied from the `from` record at write
+/// time and readers filter on it against live grants, as `change_events` does.
+/// @memory
+model FactEdge {
+  id        String       @id @default(cuid())
+  orgId     String
+  fromId    String
+  toId      String
+  kind      FactEdgeKind
+  /// ltree scope of the `from` record. Filtered at read time, never used to authorize a write.
+  scopePath String
+  /// Who recorded the edge: a user id or an agent id. Never a capability token.
+  actorType ActorType
+  actorId   String
+  createdAt DateTime     @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, fromId, toId, kind])
+  @@index([orgId, toId, kind])
+  @@index([orgId, scopePath, kind])
+  @@map("fact_edges")
+}
+
+/// Feedback a user sent through the MCP `send_feedback` tool: a bug, a request,
+/// praise. It goes to the people who run this server and nowhere else; it is never
+/// shown to other orgs or published.
+model ProductFeedback {
+  id        String   @id @default(cuid())
+  orgId     String
+  /// The capability token's agent the feedback arrived through.
+  agentId   String
+  kind      String // "bug" | "request" | "praise" | "other"
+  message   String
+  /// What the user was trying to do, when they said.
+  context   String?
+  createdAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, agentId, createdAt])
+  @@index([createdAt])
+  @@map("product_feedback")
+}
+
+/// One caller-supplied idempotency key on a memory write: memory_ingest's
+/// `idempotencyKey`, or the `Idempotency-Key` header on POST /api/memory/ingest.
+/// services/memory/ingest-key.ts is the only reader and writer. A key belongs to
+/// one principal in one org; the unique index is what lets one call, and only
+/// one, claim it. The row holds a digest of the request and the reply it got,
+/// never the written content. Kept as long as its org; keys do not expire.
+model MemoryIngestKey {
+  id          String    @id @default(cuid())
+  orgId       String
+  /// "agent" (a capability token's agent id) or "human" (a user id).
+  actorType   String
+  actorId     String
+  key         String
+  /// SHA-256 of the request's write fields; reusing the key for another digest is refused.
+  requestHash String
+  /// Fences the attempt that holds the key: only it may record the reply or free the key.
+  claimToken  String
+  /// When the attempt holding the key claimed it. One that has not finished within the
+  /// lease (INGEST_KEY_LEASE_SECONDS) may be taken over by a retry.
+  claimedAt   DateTime
+  /// The reply the write returned, repeated to every retry. Null while the write is in flight.
+  reply       Json?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, actorType, actorId, key])
+  @@map("memory_ingest_keys")
+}
+
+/// A request the hosted MCP endpoint sent a client in the middle of a tool call (sampling,
+/// elicitation), and the client's reply. The endpoint is stateless and runs on many instances:
+/// the reply arrives on a later HTTP request, often at another instance, so the waiting call
+/// reads it from here (mcp/client-requests.ts). A row lives only while its call waits.
+model McpClientRequest {
+  /// The JSON-RPC id the request was sent with: a random UUID, so a reply cannot be guessed.
+  id        String   @id
+  orgId     String
+  /// The agent the asking call ran as.
+  agentId   String
+  /// The token the asking call ran with (mcp/client-requests.ts, credentialKeyOf): a bearer
+  /// token's hash or an OAuth caller's capability id, never a raw token. Only a reply
+  /// authenticated with this token, as this agent, in this org is taken.
+  credential String
+  /// The client's JSON-RPC reply, a result or an error; null until it arrives.
+  reply     Json?
+  createdAt DateTime @default(now())
+
+  org Org @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("mcp_client_requests")
+}
+
+/// One open landing-page tab, for the "people looking right now" line
+/// (services/presence/landing-presence.ts). The id is random, made by the tab and
+/// forgotten when it closes; no IP, user agent, cookie or account is kept. Rows older
+/// than the counting window are deleted on every write.
+model LandingPresence {
+  tabId      String   @id
+  lastSeenAt DateTime
+
+  @@index([lastSeenAt])
+  @@map("landing_presence")
+}

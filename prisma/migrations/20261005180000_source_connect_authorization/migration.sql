@@ -1,0 +1,15 @@
+-- A connected source records the connect that authorizes it to write into its scope,
+-- so a sync-written change event can name an authorization that genuinely exists.
+--
+-- A connector sync is not a user action: no `check()` runs per synced item, so there is
+-- no per-write allow row for a sync write to point at, and inventing one would be a
+-- fabricated authorization. The real authority is the connect -- the visible
+-- `memory.write` allow row `check()` wrote for the `sources:connect` request in
+-- app/api/sources/route.ts, scoped to the very scope the sync writes into and naming the
+-- person who connected the source. This column holds that row, and
+-- lib/inngest/connector-sync.ts stamps it onto every change event the sync writes.
+--
+-- Additive and reversible: one nullable column, no index (it is read by source id, never
+-- searched by), no backfill. A source connected before this column existed carries null,
+-- and its sync writes keep recording no authorization rather than borrowing a guess.
+ALTER TABLE "sources" ADD COLUMN "connectAuthorizationId" TEXT;

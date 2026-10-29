@@ -1,0 +1,84 @@
+# The Willder engine on your own machine: Postgres with pgvector (app state, scopes,
+# grants, tokens, audit log and the vector store), Neo4j (the memory graph) and the
+# memory service (memory-service/, built from its Dockerfile). The MCP server and the
+# scripts run on the host with npm and reach these on 127.0.0.1. docs/self-host.md is
+# the walkthrough; `npm run selfhost:smoke` checks the result.
+#
+# The one rule: nothing here calls out except the memory service, and only to the model
+# endpoint OPENAI_BASE_URL names, for writes. Neo4j's usage report and Graphiti's
+# telemetry are off, and the embedding model is baked into the image and read offline.
+#
+# Values come from .env beside this file (copy .env.selfhost.example), the same file the
+# Node side reads. Every port is published on 127.0.0.1 only; Neo4j is not published at
+# all, since only the memory service talks to it.
+name: willder
+
+services:
+  postgres:
+    # The image and major version CI tests against (.github/workflows/ci.yml).
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${WILLDER_POSTGRES_PASSWORD:-willder}
+      POSTGRES_DB: willder
+    ports:
+      - "127.0.0.1:${WILLDER_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d willder"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  neo4j:
+    image: neo4j:5.26-community
+    environment:
+      NEO4J_AUTH: neo4j/${WILLDER_NEO4J_PASSWORD:-willder-local}
+      # dbms.usage_report.enabled: on by default, it reports anonymous usage to Neo4j.
+      NEO4J_dbms_usage__report_enabled: "false"
+    volumes:
+      - neo4j-data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${WILLDER_NEO4J_PASSWORD:-willder-local}", "RETURN 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  memory-service:
+    build: ./memory-service
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${WILLDER_NEO4J_PASSWORD:-willder-local}
+      NEO4J_DATABASE: neo4j
+      GRAPHITI_SERVICE_API_KEY: ${GRAPHITI_SERVICE_API_KEY:?set GRAPHITI_SERVICE_API_KEY in .env to any string (docs/self-host.md)}
+      # The model endpoint, for writes only: fact extraction. Reads embed locally.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-not-set}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_VERSION: ${OPENAI_API_VERSION:-}
+      OPENAI_MODEL_EXTRACT: ${OPENAI_MODEL_EXTRACT:-gpt-4o-mini}
+      # Graphiti sends anonymous telemetry unless this is false.
+      GRAPHITI_TELEMETRY_ENABLED: "false"
+      # The embedder was downloaded when the image was built; never fetch it again.
+      HF_HUB_OFFLINE: "1"
+    ports:
+      - "127.0.0.1:${WILLDER_MEMORY_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5))['neo4j'] is True"
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  postgres-data:
+  neo4j-data:

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "clerk-backend-api": {
+      "source": "clerk/skills",
+      "sourceType": "github",
+      "skillPath": "skills/core/clerk-backend-api/SKILL.md",
+      "computedHash": "723ee35b2727923bbc9050c103369985d3d2ced00c9d25d79ff6383a23d8fea9"
+    }
+  }
+}

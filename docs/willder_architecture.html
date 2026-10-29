@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Willder — Architecture Flowchart</title>
+    <style>
+      :root {
+        --fe: #dbe9ff;
+        --fe-b: #7aa7e6;
+        --api: #d6f5ec;
+        --api-b: #5cc4a6;
+        --svc: #fcf3d2;
+        --svc-b: #d9bf63;
+        --infra: #fbe0dd;
+        --infra-b: #e08b80;
+        --ext: #f1e2f7;
+        --ext-b: #c08fd6;
+        --ink: #27303a;
+        --muted: #5b6675;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 28px 64px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+        background: #f6f8fb;
+        color: var(--ink);
+      }
+      h1 {
+        text-align: center;
+        font-size: 24px;
+        margin: 0 0 4px;
+        letter-spacing: 0.3px;
+      }
+      .sub {
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 34px;
+      }
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      .layer {
+        position: relative;
+        border-radius: 16px;
+        padding: 20px 22px 22px;
+        border: 1.5px solid;
+        margin: 0 auto;
+        box-shadow: 0 2px 10px rgba(20, 30, 50, 0.05);
+      }
+      .layer-title {
+        position: absolute;
+        top: -12px;
+        left: 22px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        text-transform: uppercase;
+        padding: 3px 12px;
+        border-radius: 999px;
+        color: #fff;
+      }
+      .layer-note {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin: 2px 0 14px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .box {
+        background: #fff;
+        border: 1.5px solid rgba(40, 48, 58, 0.18);
+        border-radius: 11px;
+        padding: 9px 13px;
+        font-size: 12.5px;
+        font-weight: 600;
+        min-width: 96px;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(20, 30, 50, 0.06);
+      }
+      .box small {
+        display: block;
+        font-weight: 500;
+        color: var(--muted);
+        font-size: 10.5px;
+        margin-top: 2px;
+      }
+
+      /* frontend page cards with user actions */
+      .pages {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+      }
+      .pcard {
+        background: #fff;
+        border: 1.5px solid rgba(40, 48, 58, 0.18);
+        border-radius: 11px;
+        padding: 10px 12px;
+        box-shadow: 0 1px 3px rgba(20, 30, 50, 0.06);
+      }
+      .pcard h5 {
+        margin: 0 0 7px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--ink);
+        border-bottom: 1px solid rgba(40, 48, 58, 0.1);
+        padding-bottom: 5px;
+      }
+      .pcard ul {
+        margin: 0;
+        padding-left: 15px;
+      }
+      .pcard li {
+        font-size: 10.8px;
+        color: var(--muted);
+        line-height: 1.55;
+        margin-bottom: 1px;
+      }
+      .pcard em {
+        color: #9aa3b0;
+        font-style: normal;
+        font-size: 9.5px;
+      }
+
+      /* layer colors */
+      .l-fe {
+        background: var(--fe);
+        border-color: var(--fe-b);
+      }
+      .l-fe .layer-title {
+        background: var(--fe-b);
+      }
+      .l-api {
+        background: var(--api);
+        border-color: var(--api-b);
+      }
+      .l-api .layer-title {
+        background: var(--api-b);
+      }
+      .l-svc {
+        background: var(--svc);
+        border-color: var(--svc-b);
+      }
+      .l-svc .layer-title {
+        background: #bda23f;
+      }
+      .l-infra {
+        background: var(--infra);
+        border-color: var(--infra-b);
+      }
+      .l-infra .layer-title {
+        background: var(--infra-b);
+      }
+      .l-ext {
+        background: var(--ext);
+        border-color: var(--ext-b);
+      }
+      .l-ext .layer-title {
+        background: var(--ext-b);
+      }
+
+      .cyl {
+        border-radius: 11px/22px;
+      }
+
+      /* connector arrows between stacked layers */
+      .conn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 6px 0;
+      }
+      .conn .arrow {
+        width: 2px;
+        height: 20px;
+        background: var(--muted);
+        position: relative;
+      }
+      .conn .arrow::after {
+        content: "";
+        position: absolute;
+        bottom: -1px;
+        left: -4px;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 7px solid var(--muted);
+      }
+      .conn .lbl {
+        font-size: 11px;
+        color: var(--muted);
+        background: #f6f8fb;
+        padding: 1px 8px;
+      }
+
+      .infra-grid {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+      }
+      .infra-col {
+        flex: 1;
+        min-width: 260px;
+      }
+      .infra-col h4 {
+        margin: 2px 0 10px;
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      /* services -> external side link */
+      .side {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 14px 0 6px;
+      }
+      .side .hline {
+        flex: 0 0 40px;
+        height: 2px;
+        background: var(--muted);
+        position: relative;
+      }
+      .side .hline::after {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: -4px;
+        border-top: 5px solid transparent;
+        border-bottom: 5px solid transparent;
+        border-left: 7px solid var(--muted);
+      }
+      .side .lbl {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .legend {
+        max-width: 1180px;
+        margin: 30px auto 0;
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+      .legend b {
+        color: var(--ink);
+      }
+      .async {
+        border-style: dashed !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Willder — System Architecture</h1>
+      <p class="sub">
+        Frontend → REST API → Services → Infrastructure, with Services calling External APIs. Dashed = async.
+      </p>
+
+      <!-- FRONTEND (unchanged) -->
+      <div class="layer l-fe">
+        <span class="layer-title">Frontend</span>
+        <div class="layer-note">Next.js + HeroUI web app — pages and what users can do on each</div>
+        <div class="pages">
+          <div class="pcard">
+            <h5>Login / Signup</h5>
+            <ul>
+              <li>Sign up (email / SSO)</li>
+              <li>Log in / log out</li>
+              <li>Reset password, verify email</li>
+              <li>Create or join a workspace</li>
+              <li>Onboard: connect mailbox, set ICP</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Dashboard</h5>
+            <ul>
+              <li>See metrics (reply rate, meetings, pending)</li>
+              <li>Inbox summary + campaign performance</li>
+              <li>Recent activity feed</li>
+              <li>Quick actions: new campaign, review drafts</li>
+              <li>Filter by date / campaign</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Campaigns</h5>
+            <ul>
+              <li>View all campaigns + stats</li>
+              <li>Create campaign, define ICP</li>
+              <li>Add prospects (import / Contacts / Apollo)</li>
+              <li>Set tone, angle, cadence</li>
+              <li>Start / pause / edit / delete</li>
+              <li>View detail + performance</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Inbox — Drafts</h5>
+            <ul>
+              <li>View drafts awaiting review</li>
+              <li>Read draft + prospect context (memory)</li>
+              <li>Edit (training signal)</li>
+              <li>Approve / reject / send</li>
+              <li>Bulk approve, regenerate</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Inbox — Conversations</h5>
+            <ul>
+              <li>View outbound threads + replies</li>
+              <li>Read a thread</li>
+              <li>Draft + send a follow-up</li>
+              <li>Tag outcome (booked / not interested)</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Contacts</h5>
+            <ul>
+              <li>View / search / segment contacts</li>
+              <li>Open detail + "what we know" (memory)</li>
+              <li>Correct / delete a fact</li>
+              <li>See history + campaigns they're in</li>
+              <li>Add / edit / import / enrich (Apollo)</li>
+              <li>Add to campaign, ask about them</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Agents</h5>
+            <ul>
+              <li>View agents (roles) + status</li>
+              <li>Create / "hire" an agent by role</li>
+              <li>Configure (tone, ICP, guardrails)</li>
+              <li>Set scope / capability</li>
+              <li>Run / pause / stop</li>
+              <li>Run history + logs · delete</li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Collaboration</h5>
+            <ul>
+              <li>See agents share context / coordinate</li>
+              <li>Manage agent access to memory scopes</li>
+              <li>Set up agent teams / sharing</li>
+              <li>View handoffs <em>(advanced)</em></li>
+            </ul>
+          </div>
+          <div class="pcard">
+            <h5>Settings</h5>
+            <ul>
+              <li>Integrations (connect mailbox / sources)</li>
+              <li>Billing (plan, usage, spend caps)</li>
+              <li>Team (invite, roles, remove)</li>
+              <li>Access control (grants, audit)</li>
+              <li>Account / profile</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="conn">
+        <span class="lbl">HTTP requests (tenant-scoped)</span>
+        <div class="arrow"></div>
+      </div>
+
+      <!-- REST API -->
+      <div class="layer l-api">
+        <span class="layer-title">REST API</span>
+        <div class="layer-note">Next.js route handlers — every route auth + access-checked</div>
+        <div class="row">
+          <div class="box">/api/auth · /org</div>
+          <div class="box">/api/integrations</div>
+          <div class="box">/api/memory<small>ingest · query · facts</small></div>
+          <div class="box">/api/accounts · /contacts</div>
+          <div class="box">/api/campaigns</div>
+          <div class="box">/api/drafts<small>approval inbox</small></div>
+          <div class="box">/api/conversations</div>
+          <div class="box">/api/agents · /runs</div>
+          <div class="box">/api/access<small>grants · capabilities · audit</small></div>
+          <div class="box">/api/billing</div>
+          <div class="box">/api/webhooks</div>
+        </div>
+      </div>
+
+      <div class="conn">
+        <span class="lbl">calls</span>
+        <div class="arrow"></div>
+      </div>
+
+      <!-- SERVICES -->
+      <div class="layer l-svc">
+        <span class="layer-title">Services</span>
+        <div class="layer-note">Business logic — Access Control gates Memory (the chokepoint)</div>
+        <div class="row">
+          <div class="box">Access Control<small>RLS · ltree · check()</small></div>
+          <div class="box">Memory Service<small>Graphiti wrapper / MemoryStore</small></div>
+          <div class="box">Ingestion / Extraction<small>events → entities → facts</small></div>
+          <div class="box async">Agent Orchestration<small>Inngest · agent loops (async)</small></div>
+          <div class="box">Outbound Service<small>campaigns · drafts · send</small></div>
+          <div class="box">Research / Enrichment</div>
+          <div class="box">Learning<small>preferences · bandit (later)</small></div>
+          <div class="box">Billing Service</div>
+        </div>
+
+        <div class="side">
+          <span class="lbl">Services call out to →</span>
+          <div class="hline"></div>
+          <span class="lbl">External APIs</span>
+        </div>
+      </div>
+
+      <div class="conn">
+        <span class="lbl">read / write · query / persist</span>
+        <div class="arrow"></div>
+      </div>
+
+      <!-- INFRASTRUCTURE -->
+      <div class="layer l-infra">
+        <span class="layer-title">Infrastructure</span>
+        <div class="infra-grid">
+          <div class="infra-col">
+            <h4>Cache — Upstash Redis</h4>
+            <div class="row">
+              <div class="box">Session hot cache<small>scoped by access</small></div>
+              <div class="box">Embedding cache</div>
+              <div class="box">Query cache<small>short TTL</small></div>
+            </div>
+          </div>
+          <div class="infra-col">
+            <h4>Database</h4>
+            <div class="row">
+              <div class="box cyl">
+                Neon · Postgres<small>users · campaigns · drafts · billing · scope_paths (ltree) · audit</small>
+              </div>
+              <div class="box cyl">Neo4j<small>memory graph: entities · facts · relations (temporal)</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXTERNAL APIS -->
+      <div class="conn">
+        <span class="lbl">API calls from Services</span>
+        <div class="arrow"></div>
+      </div>
+      <div class="layer l-ext">
+        <span class="layer-title">External APIs</span>
+        <div class="layer-note">Open weights, no GPU on our side (model compute is their GPUs)</div>
+        <div class="row">
+          <div class="box">Groq<small>Qwen — extract + generate</small></div>
+          <div class="box">BGE<small>embeddings (run in-service)</small></div>
+          <div class="box">Unipile<small>mailbox · send · replies</small></div>
+          <div class="box">Apollo<small>prospect data</small></div>
+          <div class="box">Exa + Firecrawl<small>research</small></div>
+          <div class="box">Clerk<small>auth</small></div>
+          <div class="box">Stripe<small>billing</small></div>
+          <div class="box">Resend<small>transactional email</small></div>
+          <div class="box">Langfuse<small>tracing / evals</small></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <b>Flow.</b> Frontend sends tenant-scoped HTTP to the <b>REST API</b>, which calls <b>Services</b>.
+        <b>Access Control</b> gates every <b>Memory Service</b> read before facts return (the single chokepoint).
+        Services read/write the <b>Cache</b> and persist to the <b>Database</b> (Postgres for app + access policy, Neo4j
+        for the memory graph). <b>Agent Orchestration (Inngest, dashed = async)</b> runs ingestion and agent tasks in
+        the background and writes back to Services/DB. Services call <b>External APIs</b> for model inference
+        (Groq/Qwen), sending (Unipile), data (Apollo, Exa, Firecrawl), auth (Clerk), billing (Stripe), email (Resend),
+        and tracing (Langfuse). Inbound events arrive via <b>/api/webhooks</b> (Unipile replies, Stripe, Clerk).
+      </div>
+    </div>
+  </body>
+</html>

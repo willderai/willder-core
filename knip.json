@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "mcp/server.ts",
+    "cli/hooks/*.mjs",
+    "scripts/*.ts",
+    "scripts/*.mjs",
+    "services/connectors/github.real-scale.load.vitest.config.ts",
+    "services/connectors/github.real-scale.load-setup.ts",
+    "scripts/lib/deploy-target.ts",
+    "scripts/lib/require-local-env-database.ts",
+    "scripts/lib/egress-guard.mjs",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.testsupport.ts"
+  ],
+  "project": ["**/*.{ts,tsx,mjs}", "!memory-service/**", "!lib/generated/**", "!docs/**"],
+  "ignoreDependencies": [
+    "@prisma/client",
+    "tsx",
+    "dotenv-cli",
+    "@clerk/react",
+    "@ai-sdk/openai-v5",
+    "@ai-sdk/anthropic-v5",
+    "vite",
+    "@anthropic-ai/sdk"
+  ],
+  "ignoreBinaries": ["vercel"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreIssues": {}
+}

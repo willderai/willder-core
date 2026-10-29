@@ -1,0 +1,476 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Each PR supersedes its own earlier run. Main pushes have distinct groups:
+# canceling one could leave an earlier change unchecked by the next push's diff.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  # The static gates and the build. They were steps of the single `test` job;
+  # they run here, beside the test shards, so the suite no longer waits on them.
+  checks:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Client generation/build only; no live database. The drift check below
+      # overrides it for its one step.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+      QA_DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/willder_qa?sslmode=disable"
+    services:
+      qa-postgres:
+        # ltree for the scope tree, pgvector for memory_chunks.embedding.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: willder_qa
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # `npm ci` was ~50 of every ~130 seconds of this job even with the npm download
+      # cache, because it still unpacks every package. Caching the installed tree on the
+      # lockfile hash skips that entirely on a hit; a lockfile change misses and installs.
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      # Next's incremental build cache: a rebuild with it is a fraction of a cold one.
+      - name: Restore Next build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            next-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+      - run: npx prisma generate
+      - name: Typecheck
+        # A cold `tsc --noEmit` of the whole repo needs about 1.9 GB on main and
+        # more once a dev dependency's types are added, past Node 20's default
+        # heap (~2 GB) on the hosted runner; give it 4 GB, as the Build step has.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npx tsc --noEmit
+      # ESLint over the memory engine, the MCP server, the CLI and the self-host scripts.
+      - name: Lint
+        run: npx eslint mcp services/memory services/access services/audit services/facts cli types scripts/selfhost-smoke.ts scripts/selfhost-token.ts scripts/selfhost-export.ts scripts/lib
+      - name: Format
+        run: npm run format:check
+      # Dead code cannot regrow: knip fails on an unreachable file, export,
+      # type or dependency. Entry points are declared in knip.json, so a check
+      # script or e2e measure that only package.json reaches still counts as
+      # reachable. Add a real entry there rather than silencing a finding.
+      - name: Dead-code gate
+        run: npm run lint:dead
+      # Built by replaying every migration from empty, the way a fresh install
+      # and production are, so this step fails the moment the migration
+      # history stops building a working database on its own. The migrations
+      # create the ltree and vector extensions and the gist indexes themselves.
+      # The diff then fails if schema.prisma and the migrations disagree in
+      # either direction, including memory_chunks.embedding and its index,
+      # which schema.prisma declares as Unsupported("vector(384)"). The test
+      # shards build their own databases from the same migrations
+      # (tests/setup/test-databases.ts); this step is the one drift check.
+      - name: Migrations build a database that matches schema.prisma
+        env:
+          # `migrate deploy` and `migrate diff` read the URL from
+          # prisma.config.ts, which reads DATABASE_URL. Overridden for this
+          # step only.
+          DATABASE_URL: ${{ env.QA_DATABASE_URL }}
+        run: |
+          npx prisma migrate deploy
+          diff_sql=$(npx prisma migrate diff --from-config-datasource \
+            --to-schema prisma/schema.prisma --script)
+          drift=$(printf '%s\n' "$diff_sql" |
+            grep -E '^(ALTER|CREATE|DROP)' || true)
+          if [ -n "$drift" ]; then
+            echo "schema.prisma declares changes no migration makes:" >&2
+            echo "$drift" >&2
+            exit 1
+          fi
+      # The scope-containment and bypass-credentials gates share one installation.
+      - name: Scope-containment gate
+        run: npm run scope-gate:check
+      # README.md "Credentials that bypass the authorizer" must name every
+      # credential the code reads that reaches memory without check().
+      - name: Bypass-credentials list
+        run: npm run bypass-credentials:check
+      - name: Build
+        # The TypeScript step of `next build` outgrew Node 20's default heap
+        # (~2 GB) on the hosted runner; give it 4 GB.
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npx next build
+      - name: Boot check (dynamic-route slug collision)
+        # `next start` exits right after Ready when a variable in
+        # lib/required-env.ts WEB_SERVER_ENV is missing, before the collision
+        # check could fire. These placeholders let the server stay up; the boot
+        # makes no request, so nothing ever dials them. Every WEB_SERVER_ENV
+        # name must be listed here: lib/required-env.test.ts fails otherwise.
+        env:
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+          GRAPHITI_SERVICE_URL: "http://localhost:8000"
+          GRAPHITI_SERVICE_API_KEY: "ci-placeholder"
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk"
+          CLERK_SECRET_KEY: "sk_test_ci_placeholder"
+        run: bash scripts/check-route-collision.sh
+
+  # The Vitest suite, split four ways by file. Each shard has its own Postgres;
+  # inside a shard every worker gets its own copy of a database built from the
+  # migrations (tests/setup/test-databases.ts), so no two test files running at
+  # once share rows. The `test` job below proves the four together ran the whole suite.
+  test-shard:
+    name: test shard ${{ matrix.shard }}/4
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # Every shard reports, so one failure does not hide another.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      # Deliberately reaches nothing: no service listens on :5432. The real-
+      # Postgres suites refuse to run when DATABASE_URL equals
+      # QA_DATABASE_URL, and a suite that forgets to switch to the QA database
+      # fails here rather than writing somewhere it should not.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+      # The isolated server the real-Postgres suites run against. Without it
+      # every `describe.skipIf(!QA_URL)` block skips, and the green check says
+      # nothing about the isolation the October access-control review rests on
+      # (item realdb-suites-never-run-in-ci-20260923). The global test setup
+      # builds a template from the migrations on this server and gives each
+      # worker its own copy, renaming this variable per worker.
+      QA_DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/willder_qa?sslmode=disable"
+      # The handoff lifecycle suite's second opt-in. It mocks the agent, so it
+      # makes no model call and needs nothing beyond the database above. It
+      # shared this flag with app/api/handoff-gate-c-extension.live.test.ts,
+      # whose contradiction cases do need a paid model call, and that sharing
+      # is why a suite that passes 9 of 9 skipped here until item
+      # handoff-live-suite-flag-split-20260923 gave the two separate gates.
+      HANDOFF_E2E_LIVE: "1"
+      # The Python the PROV-JSON export tests validate every exported document with
+      # (scripts/prov/validate_prov_json.py), installed by the step below. Those tests
+      # fail rather than skip in CI when it is missing.
+      PROV_PYTHON: python3
+    services:
+      qa-postgres:
+        # ltree for the scope tree, pgvector for memory_chunks.embedding. The
+        # stock postgres image carries ltree but not vector; this is that image
+        # plus the extension.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: willder_qa
+        ports:
+          # Published on 5433 so DATABASE_URL's :5432 still reaches nothing.
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - run: npx prisma generate
+      # The PROV-JSON validator: the W3C PROV-JSON schema plus the reference `prov`
+      # package. requirements.txt pins every package of the closure to an exact version,
+      # and --no-deps keeps pip from resolving anything unpinned in. CI only: nothing
+      # the application runs depends on Python.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: scripts/prov/requirements.txt
+      - name: Install the PROV-JSON validator
+        run: pip install --no-deps -r scripts/prov/requirements.txt
+      - name: Unit tests (shard ${{ matrix.shard }} of 4)
+        run: >-
+          npx vitest run --shard=${{ matrix.shard }}/4
+          --reporter=default --reporter=json
+          --outputFile.json=test-results/shard-${{ matrix.shard }}.json
+      # Uploaded even when tests fail, so the coverage check below can still
+      # say which files ran.
+      - name: Upload the shard's test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-shard-${{ matrix.shard }}
+          path: test-results/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # The two suites that drive a fact delete from the Node routes through a running
+  # memory-service into Neo4j. The shards above skip them, since a shard has Postgres
+  # but no memory-service; this job gives them one, started from this checkout against
+  # a disposable Neo4j. The memory-service tests prove the Cypher on its own; only these
+  # prove the Node app calls it, including for a fact deleted before its ingest job has
+  # written the graph.
+  graph-delete-realdb:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?sslmode=disable"
+      QA_DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/willder_qa?sslmode=disable"
+      MEMORY_SERVICE_TEST_URL: "http://127.0.0.1:18000"
+      # A shared secret between this job's two processes, nothing else.
+      MEMORY_SERVICE_TEST_API_KEY: "ci-graph-delete"
+      NEO4J_DELETE_TEST_URI: "bolt://127.0.0.1:17687"
+    services:
+      qa-postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: willder_qa
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      test-neo4j:
+        image: neo4j:5.26-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 17687:7687
+        options: >-
+          --health-cmd "cypher-shell -a bolt://127.0.0.1:7687 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - run: npx prisma generate
+      - uses: actions/setup-python@v5
+        id: setup-python
+        with:
+          python-version: "3.13"
+      # Not memory-service-tests' virtualenv: that one carries the default CUDA build
+      # of torch, several GB, and restoring it beside the Neo4j and Postgres containers
+      # killed the runner twice. This one installs the CPU-only wheel first, as
+      # memory-service/Dockerfile does (about 1.5 GB in all), under its own key.
+      - name: Restore virtualenv (CPU torch)
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: memory-service/.venv
+          key: venv-cpu-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('memory-service/requirements*.txt') }}
+      - if: steps.venv.outputs.cache-hit != 'true'
+        working-directory: memory-service
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+          .venv/bin/pip install -r requirements-dev.txt
+      # The graph read embeds its query, so the service needs the BGE weights.
+      - name: Restore the embedder weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-bge-small-en-v1.5
+      - name: Download the embedder weights
+        working-directory: memory-service
+        run: .venv/bin/python -m app.prefetch
+      - name: Start the memory-service
+        working-directory: memory-service
+        env:
+          NEO4J_URI: ${{ env.NEO4J_DELETE_TEST_URI }}
+          NEO4J_DATABASE: neo4j
+          GRAPHITI_SERVICE_API_KEY: ${{ env.MEMORY_SERVICE_TEST_API_KEY }}
+          # Graphiti will not build without an LLM key, but deletion and the graph read
+          # never call the model. The base URL reaches nothing, so if one ever did, it
+          # would fail here instead of calling a paid provider.
+          OPENAI_API_KEY: ci-placeholder
+          OPENAI_BASE_URL: "http://127.0.0.1:9/v1"
+        run: |
+          nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 18000 \
+            > "$RUNNER_TEMP/memory-service.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -sf "$MEMORY_SERVICE_TEST_URL/health" | grep -q '"neo4j":true'; then exit 0; fi
+            sleep 2
+          done
+          echo "memory-service did not report a healthy Neo4j within two minutes" >&2
+          cat "$RUNNER_TEMP/memory-service.log" >&2
+          exit 1
+      # /health is green as soon as Neo4j answers, while the service's startup warm-up
+      # (Graphiti's index build and the BGE weights) still runs in the background. A
+      # first test that lands then pays that cost inside its 5 s timeout (6.2 s on a
+      # cold runner). A search waits for the same shared build and embeds a query, so
+      # once it answers the service is warm. The group holds nothing; the answer is empty.
+      - name: Wait for the memory-service warm-up
+        run: |
+          curl -sf --max-time 120 -X POST "$MEMORY_SERVICE_TEST_URL/search" \
+            -H "Authorization: Bearer $MEMORY_SERVICE_TEST_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"group_id":"ci-warmup","query":"warm-up","limit":1}' > /dev/null
+      # One vitest run per file: delete-retires-graph empties the whole Neo4j before
+      # each case, so the two must not run at the same time. Each run must pass every
+      # case and skip none; a suite that skipped here would be the same silent gap
+      # this job exists to close.
+      - name: Fact delete retires the graph
+        run: |
+          npx vitest run "app/api/memory/facts/[id]/delete-retires-graph.realdb.test.ts" \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/retire.json"
+          jq -e '.numTotalTests > 0 and .numPassedTests == .numTotalTests' "$RUNNER_TEMP/retire.json"
+      - name: A fact deleted before its graph write stays deleted
+        run: |
+          npx vitest run lib/inngest.delete-before-graph-write.realdb.test.ts \
+            --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/before-write.json"
+          jq -e '.numTotalTests > 0 and .numPassedTests == .numTotalTests' "$RUNNER_TEMP/before-write.json"
+      - name: The memory-service log
+        if: failure()
+        run: cat "$RUNNER_TEMP/memory-service.log"
+
+  # Keeps the single `test` check every pull request has always reported: it
+  # passes only when the static gates passed, every shard passed, the graph
+  # delete suites passed, and the shards together ran exactly the files
+  # `vitest list` names.
+  test:
+    needs: [checks, test-shard, graph-delete-realdb]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The static gates, every shard and the graph delete suites passed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          SHARDS: ${{ needs.test-shard.result }}
+          GRAPH: ${{ needs.graph-delete-realdb.result }}
+        run: |
+          echo "checks: $CHECKS; test shards: $SHARDS; graph delete suites: $GRAPH"
+          [ "$CHECKS" = success ] && [ "$SHARDS" = success ] && [ "$GRAPH" = success ]
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Restore node_modules
+        id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node20-${{ hashFiles('package-lock.json') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: npm ci
+      - name: Download every shard's test report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-shard-*
+          path: test-results
+          merge-multiple: true
+      - name: The shards ran every test file exactly once
+        run: |
+          npx vitest list --filesOnly --json > test-results/vitest-list.json
+          node scripts/check-test-shards.mjs test-results/vitest-list.json test-results/shard-*.json
+
+  memory-service-tests:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: memory-service
+    env:
+      # Every graph deletion and retirement suite is gated on one of these two
+      # variables and skipped without it, so the service below gives them a real
+      # database: those suites prove retired content is no longer retrievable.
+      # The port is 17687, not 7687, the same way the Postgres service above
+      # publishes 5433: a developer's own Neo4j on the default port stays
+      # reachable and is never the database a test wipes.
+      NEO4J_DELETE_TEST_URI: "bolt://127.0.0.1:17687"
+      NEO4J_PROVENANCE_TEST_URI: "bolt://127.0.0.1:17687"
+      NEO4J_POOL_TEST_URI: "bolt://127.0.0.1:17687"
+    services:
+      test-neo4j:
+        # The tests connect with `auth=None`, so authentication is off. This
+        # database holds nothing but what each test seeds and wipes.
+        image: neo4j:5.26-community
+        env:
+          NEO4J_AUTH: none
+        ports:
+          - 17687:7687
+        options: >-
+          --health-cmd "cypher-shell -a bolt://127.0.0.1:7687 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        id: setup-python
+        with:
+          python-version: "3.13"
+      # This job averaged 2.9 minutes, most of it `pip install`: requirements.txt pulls
+      # sentence-transformers and therefore torch. setup-python's `cache: pip` only keeps
+      # the downloads, so every run still installed them. Caching the virtualenv on the
+      # requirements hash skips the install on a hit; a requirements change misses.
+      # The key carries the full interpreter version, not just 3.13: a virtualenv links
+      # to the toolcache path of the exact patch release that built it, so a cache built
+      # on 3.13.15 and restored after setup-python moves to 3.13.16 has a dangling
+      # .venv/bin/python and pytest exits 127 on a PR that changed nothing.
+      - name: Restore virtualenv
+        id: venv
+        uses: actions/cache@v4
+        with:
+          path: memory-service/.venv
+          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('memory-service/requirements*.txt') }}
+      - if: steps.venv.outputs.cache-hit != 'true'
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements-dev.txt
+      - name: Python unit tests
+        run: .venv/bin/python -m pytest

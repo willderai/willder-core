@@ -1,0 +1,261 @@
+{
+  "$comment": [
+    "Spellings a person erasure must read alike in all three of its engines: JavaScript (services/memory/person-name-characters.ts, foldName, and the suppression digests built on it), Postgres (services/memory/person-erasure.ts, foldedText) and the graph's Cypher (memory-service/app/name_fold.py).",
+    "folds: text, and the form every engine folds it to.",
+    "people: the people erased. cases: text filed under a record named `name` ('Pricing' when absent), and whether erasing every person removes it.",
+    "Read by services/memory/erasure-rule-agreement.realdb.test.ts (JavaScript and Postgres) and memory-service/tests/test_person_erasure_integration.py (the graph). No case here is a known difference: every engine must decide it as `expected`."
+  ],
+  "folds": [
+    { "text": "DANA WH\u0130TF\u0130ELD", "folded": "dana whitfield" },
+    { "text": "ALI\u0307 KIM", "folded": "ali kim" },
+    { "text": "ali\u0307 kim", "folded": "ali kim" },
+    { "text": "Ay\u015fe \u0130nce", "folded": "ay\u015fe ince" },
+    { "text": "Al\u0131 Kim", "folded": "al\u0131 kim" },
+    { "text": "I\u015eIL YILMAZ", "folded": "i\u015fil yilmaz" },
+    {
+      "text": "\u039d\u038a\u039a\u039f\u03a3 \u03a0\u0391\u03a0\u0386\u03a3",
+      "folded": "\u03bd\u03af\u03ba\u03bf\u03c3 \u03c0\u03b1\u03c0\u03ac\u03c3"
+    },
+    { "text": "\u039d\u03af\u03ba\u03bf\u03c2", "folded": "\u03bd\u03af\u03ba\u03bf\u03c3" },
+    { "text": "\u03a3\u0391\u03a3.", "folded": "\u03c3\u03b1\u03c3." },
+    { "text": "HANS STRAU\u1e9e", "folded": "hans strau\u00df" },
+    { "text": "Hans Strauss", "folded": "hans strauss" },
+    { "text": "Dana Whit\ufb01eld", "folded": "dana whitfield" },
+    { "text": "\ufb00\ufb03\ufb04\ufb06", "folded": "ffffifflst" },
+    {
+      "text": "\uff24\uff41\uff4e\uff41 \uff37\uff28\uff29\uff34\uff26\uff29\uff25\uff2c\uff24",
+      "folded": "dana whitfield"
+    },
+    { "text": "ZO\u00cb FERRAND", "folded": "zo\u00eb ferrand" },
+    { "text": "ZOE\u0308 FERRAND", "folded": "zo\u00eb ferrand" },
+    { "text": "Zoe\u0301\u0308", "folded": "zo\u00e9\u0308" },
+    { "text": "RENE\u0301E", "folded": "ren\u00e9e" },
+    { "text": "J\u030c", "folded": "\u01f0" },
+    { "text": "\u01c4EMAL", "folded": "d\u017eemal" },
+    { "text": "O\u2019BRIEN", "folded": "o'brien" },
+    {
+      "text": "\u041e\u041b\u0415\u0413 \u0421\u041e\u041a\u041e\u041b\u041e\u0412",
+      "folded": "\u043e\u043b\u0435\u0433 \u0441\u043e\u043a\u043e\u043b\u043e\u0432"
+    },
+    { "text": "\u1c82", "folded": "\u1c82" }
+  ],
+  "people": [
+    { "id": "fold-dana", "name": "Dana Whitfield", "email": "dana@fold.example" },
+    { "id": "fold-ali", "name": "Ali Kim", "email": "ali@fold.example" },
+    { "id": "fold-isil", "name": "I\u015f\u0131l Y\u0131lmaz", "email": "isil@fold.example" },
+    {
+      "id": "fold-nikos",
+      "name": "\u039d\u03af\u03ba\u03bf\u03c2 \u03a0\u03b1\u03c0\u03ac\u03c2",
+      "email": "nikos@fold.example"
+    },
+    { "id": "fold-hans", "name": "Hans Strau\u00df", "email": "hans@fold.example" },
+    { "id": "fold-zoe", "name": "Zo\u00eb Ferrand", "email": "zoe@fold.example" },
+    { "id": "fold-ayse", "name": "Ay\u015fe \u0130nce", "email": "AY\u015eE.\u0130NCE@FOLD.EXAMPLE" },
+    {
+      "id": "fold-oleg",
+      "name": "\u041e\u043b\u0435\u0433 \u0421\u043e\u043a\u043e\u043b\u043e\u0432",
+      "email": "oleg@fold.example"
+    }
+  ],
+  "cases": [
+    {
+      "label": "her name in Turkish capitals",
+      "content": "DANA WH\u0130TF\u0130ELD signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a dotted capital I inside a word",
+      "content": "Dana Whitf\u0130eld signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a dotted capital I, written without spaces",
+      "content": "DANA_WH\u0130TF\u0130ELD_OFFER.PDF",
+      "expected": "erased"
+    },
+    { "label": "a dotted capital I, in camel case", "content": "DanaWh\u0130tf\u0130eld.pdf", "expected": "erased" },
+    {
+      "label": "a dotted capital I, a record's name",
+      "name": "DANA WH\u0130TF\u0130ELD",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    {
+      "label": "a dotted capital I, her address",
+      "content": "Write to AL\u0130@FOLD.EXAMPLE today.",
+      "expected": "erased"
+    },
+    {
+      "label": "I and a combining dot above, composed to the dotted capital",
+      "content": "ALI\u0307 KIM signed the order.",
+      "expected": "erased"
+    },
+    { "label": "plain capitals", "content": "ALI KIM signed the order.", "expected": "erased" },
+    {
+      "label": "a dotted capital I, then a hyphenated surname",
+      "content": "DANA WH\u0130TF\u0130ELD-BARNES runs procurement.",
+      "expected": "kept"
+    },
+    {
+      "label": "a dotted capital I, a longer word",
+      "content": "AL\u0130 K\u0130MBERLY signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "a dotted capital I, a given name joined to hers",
+      "content": "MARY-DANA WH\u0130TF\u0130ELD runs procurement.",
+      "expected": "kept"
+    },
+    { "label": "a dotless i where her name has i", "content": "Al\u0131 Kim signed the order.", "expected": "kept" },
+    { "label": "a dotless i, written without spaces", "content": "Al\u0131_Kim.pdf", "expected": "kept" },
+    {
+      "label": "a name holding a dotless i",
+      "content": "I\u015f\u0131l Y\u0131lmaz signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name holding a dotless i, upper case where Turkish keeps the dot",
+      "content": "I\u015eIL YILMAZ signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "a name holding a dotless i, the dots left off: her ASCII spelling",
+      "content": "Isil Yilmaz signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name holding a dotless i, written with i",
+      "content": "I\u015fil Yilmaz signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "i and a combining dot above, as JavaScript lowercases the dotted capital",
+      "content": "ali\u0307 kim signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name stored with a dotted capital I, in Turkish capitals",
+      "content": "AY\u015eE \u0130NCE signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name stored with a dotted capital I, lowercased by JavaScript",
+      "content": "Ay\u015fe i\u0307nce signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name stored with a dotted capital I, written with I",
+      "content": "Ay\u015fe Ince signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a name stored with a dotted capital I, written with a dotless i",
+      "content": "Ay\u015fe \u0131nce signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "an address holding a dotted capital I, as stored",
+      "content": "Write to AY\u015eE.\u0130NCE@FOLD.EXAMPLE today.",
+      "expected": "erased"
+    },
+    {
+      "label": "an address holding a dotted capital I, in lower case",
+      "content": "Write to ay\u015fe.ince@fold.example today.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Greek name in capitals, ending in sigma",
+      "content": "\u039d\u038a\u039a\u039f\u03a3 \u03a0\u0391\u03a0\u0386\u03a3 signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Greek name with medial sigmas at its ends",
+      "content": "\u039d\u03af\u03ba\u03bf\u03c3 \u03a0\u03b1\u03c0\u03ac\u03c3 signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Greek name in capitals, written without spaces",
+      "content": "\u039d\u038a\u039a\u039f\u03a3_\u03a0\u0391\u03a0\u0386\u03a3.pdf",
+      "expected": "erased"
+    },
+    {
+      "label": "a Greek name in capitals, a record's name",
+      "name": "\u039d\u038a\u039a\u039f\u03a3 \u03a0\u0391\u03a0\u0386\u03a3",
+      "content": "Notes.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Greek name, a longer surname in capitals",
+      "content": "\u039d\u038a\u039a\u039f\u03a3 \u03a0\u0391\u03a0\u0386\u03a3\u0397\u03a3 signed the order.",
+      "expected": "kept"
+    },
+    { "label": "a capital sharp s", "content": "HANS STRAU\u1e9e signed the order.", "expected": "erased" },
+    { "label": "a sharp s", "content": "Hans Strau\u00df signed the order.", "expected": "erased" },
+    {
+      "label": "ss where her name has a sharp s: her ASCII spelling",
+      "content": "Hans Strauss signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "SS where her name has a sharp s: her ASCII spelling",
+      "content": "HANS STRAUSS signed the order.",
+      "expected": "erased"
+    },
+    { "label": "a ligature", "content": "Dana Whit\ufb01eld signed the order.", "expected": "erased" },
+    {
+      "label": "fullwidth capitals",
+      "content": "\uff24\uff21\uff2e\uff21 \uff37\uff28\uff29\uff34\uff26\uff29\uff25\uff2c\uff24 signed.",
+      "expected": "erased"
+    },
+    {
+      "label": "fullwidth capitals and a dotted capital I",
+      "content": "\uff24\uff21\uff2e\uff21 \uff37\uff28\u0130\uff34\uff26\u0130\uff25\uff2c\uff24 signed.",
+      "expected": "erased"
+    },
+    {
+      "label": "a dotless i, then a fullwidth surname",
+      "content": "Al\u0131 \uff2b\uff49\uff4d signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "an accented name in capitals, composed",
+      "content": "ZO\u00cb FERRAND signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "an accented name in capitals, decomposed",
+      "content": "ZOE\u0308 FERRAND signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "an accented name in capitals, written without spaces",
+      "content": "ZO\u00cb_FERRAND.PDF",
+      "expected": "erased"
+    },
+    {
+      "label": "a second accent on her letter",
+      "content": "Zo\u00eb\u0301 Ferrand signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "two accents in the other order",
+      "content": "Zoe\u0301\u0308 Ferrand signed the order.",
+      "expected": "kept"
+    },
+    {
+      "label": "the accent left off, in capitals: her ASCII spelling",
+      "content": "ZOE FERRAND signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Cyrillic name in capitals",
+      "content": "\u041e\u041b\u0415\u0413 \u0421\u041e\u041a\u041e\u041b\u041e\u0412 signed the order.",
+      "expected": "erased"
+    },
+    {
+      "label": "a Cyrillic name with a variant letter",
+      "content": "\u041e\u043b\u0435\u0433 \u0421\u1c82\u043a\u043e\u043b\u043e\u0432 signed the order.",
+      "expected": "kept"
+    }
+  ]
+}

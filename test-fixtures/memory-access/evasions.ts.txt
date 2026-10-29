@@ -1,0 +1,26 @@
+// Fixture for eslint.memory-access.test.ts: ways of reaching a memory table that
+// do not look like `db.brief.findFirst`. Every line marked REPORT must be reported.
+import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import { db as database } from "@/lib/db";
+
+export async function evasions(id: string, table: string, tx2: Prisma.TransactionClient) {
+  const m = database.brief; // REPORT: a memory delegate held in a variable
+  await m.findMany();
+  const { memoryChunk } = database; // REPORT: destructured out of the client
+  await memoryChunk.deleteMany();
+  await database.$transaction(async (t) => {
+    const chunks = t.memoryChunk; // REPORT: aliased from a transaction client
+    return chunks.count();
+  });
+  await tx2.factEdge.findMany(); // REPORT: a typed transaction client
+  const fresh = new PrismaClient();
+  await fresh["brief"].findMany(); // REPORT: computed access by name
+  await database[table as "brief"].findMany(); // REPORT: dynamic delegate access
+  await database.$queryRawUnsafe(`SELECT * FROM public.briefs WHERE id = $1`, id); // REPORT: schema-qualified
+  await database.$queryRawUnsafe("SELECT * FROM sources s, briefs b WHERE s.id = $1", id); // REPORT: comma join
+  await database.$executeRawUnsafe("TRUNCATE memory_chunks"); // REPORT: truncate
+  await database.$queryRaw`SELECT 1 FROM ${Prisma.raw("fact_edges")}`; // REPORT: a table name as a raw fragment
+  await database.$executeRaw`DELETE FROM sources USING briefs WHERE briefs.id = ${id}`; // REPORT: USING
+  await database.agentRun.findMany({ where: { brief: { summary: { contains: id } } } }); // REPORT: relation filter
+  return database.agentRun.count({ where: { id }, orderBy: { brief: { createdAt: "desc" } } }); // REPORT: relation order
+}

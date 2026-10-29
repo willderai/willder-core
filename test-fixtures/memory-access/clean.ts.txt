@@ -1,0 +1,22 @@
+// Fixture for eslint.memory-access.test.ts: code the memory-access gate must NOT
+// report anywhere, because none of it queries a memory table.
+import { db } from "@/lib/db";
+
+export async function reads(id: string, run: { brief: { title: string } }) {
+  // A non-memory model.
+  const grants = await db.grant.findMany({ where: { id } });
+  // A property that happens to share a memory model's name, read off a plain object.
+  const title = run.brief.title;
+  // Prose that mentions a memory table without being SQL.
+  const note = "briefs are withdrawn when their source is disconnected";
+  return { grants, title, note };
+}
+
+export function notClients(run: { brief: { id: string } | null }, rows: { briefs: number }[]) {
+  // A memory model's name on objects that are not Prisma clients.
+  const brief = run.brief;
+  const { briefs } = rows[0];
+  // A UI string that mentions a memory table next to an SQL-ish word.
+  const hint = "Select the briefs you want to export, then choose a folder";
+  return { brief, briefs, hint };
+}

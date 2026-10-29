@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Willder — Database Relationship Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 36px 24px 64px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+        background: #f6f8fb;
+        color: #27303a;
+      }
+      h1 {
+        text-align: center;
+        font-size: 23px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        text-align: center;
+        color: #5b6675;
+        font-size: 13px;
+        margin: 0 0 30px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 34px auto 8px;
+        max-width: 1200px;
+        color: #27303a;
+        border-left: 4px solid #5cc4a6;
+        padding-left: 10px;
+      }
+      h2.pg {
+        border-color: #7aa7e6;
+      }
+      h2.graph {
+        border-color: #c08fd6;
+      }
+      .panel {
+        background: #fff;
+        border: 1px solid #e3e8ef;
+        border-radius: 14px;
+        padding: 18px;
+        max-width: 1200px;
+        margin: 0 auto;
+        box-shadow: 0 2px 10px rgba(20, 30, 50, 0.05);
+        overflow: auto;
+      }
+      .note {
+        max-width: 1200px;
+        margin: 14px auto 0;
+        font-size: 12.5px;
+        color: #5b6675;
+        line-height: 1.7;
+      }
+      .note b {
+        color: #27303a;
+      }
+      .mermaid {
+        display: flex;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Willder — Database Relationship Diagram</h1>
+    <p class="sub">Neon (Postgres) relational schema + Neo4j memory graph, linked by <code>entity_id</code>.</p>
+
+    <h2 class="pg">Neon — Postgres (app system of record)</h2>
+    <div class="panel">
+      <pre class="mermaid">
+erDiagram
+    ORGS ||--o{ USERS : "has"
+    ORGS ||--o{ ACCOUNTS : "has"
+    ORGS ||--o{ CAMPAIGNS : "has"
+    ORGS ||--o{ AGENTS : "has"
+    ORGS ||--o{ SCOPES : "has"
+    ORGS ||--o{ INTEGRATIONS : "has"
+    ORGS ||--o{ SUBSCRIPTIONS : "has"
+    ORGS ||--o{ AUDIT_LOG : "has"
+    ORGS ||--o{ FEEDBACK_EVENTS : "has"
+
+    ACCOUNTS ||--o{ CONTACTS : "has"
+    CAMPAIGNS ||--o{ CAMPAIGN_PROSPECTS : "contains"
+    CONTACTS  ||--o{ CAMPAIGN_PROSPECTS : "enrolled in"
+    CAMPAIGNS ||--o{ DRAFTS : "generates"
+    CONTACTS  ||--o{ DRAFTS : "targets"
+    CONTACTS  ||--o{ CONVERSATIONS : "with"
+    CONVERSATIONS ||--o{ MESSAGES : "contains"
+    AGENTS ||--o{ AGENT_RUNS : "has"
+    AGENTS ||--o{ CAPABILITIES : "granted"
+    SCOPES ||--o{ GRANTS : "on"
+    USERS  ||--o{ GRANTS : "receives"
+    USERS  ||--o{ ROLES : "member of"
+    SUBSCRIPTIONS ||--o{ USAGE : "meters"
+
+    ORGS {
+      uuid id PK
+      string name
+      string plan
+    }
+    USERS {
+      uuid id PK
+      uuid org_id FK
+      string email
+      string role
+    }
+    ACCOUNTS {
+      uuid id PK
+      uuid org_id FK
+      string name
+      string domain
+      uuid entity_id "→ Neo4j"
+    }
+    CONTACTS {
+      uuid id PK
+      uuid org_id FK
+      uuid account_id FK
+      string email
+      string status
+      uuid entity_id "→ Neo4j"
+    }
+    CAMPAIGNS {
+      uuid id PK
+      uuid org_id FK
+      string icp
+      string status
+    }
+    CAMPAIGN_PROSPECTS {
+      uuid id PK
+      uuid campaign_id FK
+      uuid contact_id FK
+      string status
+    }
+    DRAFTS {
+      uuid id PK
+      uuid campaign_id FK
+      uuid contact_id FK
+      text body
+      string status
+    }
+    CONVERSATIONS {
+      uuid id PK
+      uuid contact_id FK
+      string thread_ref
+    }
+    MESSAGES {
+      uuid id PK
+      uuid conversation_id FK
+      string direction
+      text body
+    }
+    AGENTS {
+      uuid id PK
+      uuid org_id FK
+      string role
+      string scope
+    }
+    AGENT_RUNS {
+      uuid id PK
+      uuid agent_id FK
+      string status
+      jsonb result
+    }
+    CAPABILITIES {
+      uuid id PK
+      uuid agent_id FK
+      string scope
+      timestamp expires_at
+    }
+    SCOPES {
+      uuid id PK
+      uuid org_id FK
+      ltree path
+    }
+    GRANTS {
+      uuid id PK
+      uuid scope_id FK
+      uuid grantee_id FK
+      string grantee_type
+      string permission
+    }
+    ROLES {
+      uuid id PK
+      uuid org_id FK
+      string name
+    }
+    INTEGRATIONS {
+      uuid id PK
+      uuid org_id FK
+      string provider
+      string status
+    }
+    SUBSCRIPTIONS {
+      uuid id PK
+      uuid org_id FK
+      string plan
+    }
+    USAGE {
+      uuid id PK
+      uuid subscription_id FK
+      string metric
+      int amount
+    }
+    AUDIT_LOG {
+      uuid id PK
+      uuid org_id FK
+      uuid actor_id
+      string action
+      string target
+    }
+    FEEDBACK_EVENTS {
+      uuid id PK
+      uuid org_id FK
+      string type
+      jsonb payload
+    }
+    </pre
+      >
+    </div>
+    <p class="note">
+      <b>Tenant root:</b> every table hangs off <code>ORGS</code> via <code>org_id</code> (tenant isolation).
+      <b>Access control:</b> <code>SCOPES</code> (ltree tree) + <code>GRANTS</code> + <code>ROLES</code> + agent
+      <code>CAPABILITIES</code>. <b>Link to memory:</b> <code>ACCOUNTS</code> and <code>CONTACTS</code> carry
+      <code>entity_id</code> pointing to a Neo4j entity.
+    </p>
+
+    <h2 class="graph">Neo4j — memory graph (via Graphiti)</h2>
+    <div class="panel">
+      <pre class="mermaid">
+graph LR
+    EP["Episode<br/><small>raw source, embedding, valid_at</small>"]
+    EN["Entity<br/><small>person / company / deal<br/>name_embedding, created_by</small>"]
+    EN2["Entity"]
+    CM["Community"]
+    PG[("Postgres<br/>contacts / accounts")]
+
+    EP -->|MENTIONS| EN
+    EN -->|"FACT (subject → object)<br/>valid_at · invalid_at · confidence · source_event_ids · created_by"| EN2
+    EN -->|RELATION| EN2
+    CM -->|HAS_MEMBER| EN
+    PG -. "entity_id" .-> EN
+
+    classDef pg fill:#dbe9ff,stroke:#7aa7e6;
+    classDef node fill:#f1e2f7,stroke:#c08fd6;
+    class EP,EN,EN2,CM node;
+    class PG pg;
+    </pre>
+    </div>
+    <p class="note">
+      <b>Graph model (not relational):</b> <code>Episode</code> nodes are raw sources; <code>Entity</code> nodes are the
+      graph nodes; <code>FACT</code> and <code>RELATION</code> are directed edges between entities (facts are
+      bi-temporal + carry provenance and <code>created_by</code>); <code>Community</code> clusters entities. Vectors
+      live here (Neo4j), not in Postgres. The two databases join only at <code>entity_id</code>.
+    </p>
+
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", er: { useMaxWidth: true } });
+    </script>
+  </body>
+</html>
