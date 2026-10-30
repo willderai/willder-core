@@ -21,12 +21,15 @@
 // reaches check() or a `scopePath ?? orgRootPath(...)` write path, and
 // isValidLtreePath() covers the non-empty-but-malformed remainder.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 // The derived-write rule is tested on Postgres (mcp/derived-write.realdb.test.ts); off here.
 vi.mock("@/services/access/derived-writes", () => import("@/services/access/derived-writes.testsupport"));
 vi.mock("@/lib/db", () => ({
   db: {
     $queryRaw: vi.fn(),
+    // Recording the served version of a write that returns one (recordServedVersions).
+    $executeRaw: vi.fn().mockResolvedValue(0),
     auditLog: { create: vi.fn().mockResolvedValue({ id: "audit_test" }), update: vi.fn() },
     agent: { findMany: vi.fn().mockResolvedValue([]) },
   },
@@ -236,6 +239,159 @@ describe("memory_ingest — a write outside the caller's granted scope is reject
     mockCapabilityLookup(DEAL_A, "write");
     await ingestHandler(DEAL_A)({ content: "note", name: "Deal A" });
     expect(ingestMemory).toHaveBeenLastCalledWith(expect.objectContaining({ actorName: '"agent_1" (agent token)' }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recovering from an invented scopePath.
+//
+// On 2026-10-29 a local qwen3:14b driving memory_ingest invented a scopePath
+// (such as "system.infrastructure") on 5 of its 7 saves, was refused, and told its user it
+// lacked permission instead of sending the call again without it. The refusal
+// now says how to write: leave scopePath out and the write lands in the token's
+// own scope. The scope check itself is unchanged: the refused call writes nothing.
+// ---------------------------------------------------------------------------
+
+describe("memory_ingest — a scope refusal says how to write to the token's own scope", () => {
+  const HINT = "omit scopePath to write to your own scope, the one your token defaults to.";
+
+  it("a scopePath the token does not cover is still refused, and the refusal names the way back", async () => {
+    mockCapabilityLookup(DEAL_A, "write");
+    const result = await ingestHandler(DEAL_A)({
+      content: "sessions live in Postgres",
+      name: "Session storage",
+      scopePath: "system.infrastructure",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/^Access denied: /);
+    expect(result.content[0]!.text).toContain(HINT);
+    // A refusal names no registered scope path, the token's own included.
+    expect(result.content[0]!.text).not.toContain(DEAL_A);
+    expect(ingestMemory).not.toHaveBeenCalled();
+    expect(auditRows().filter((r) => r.action === "memory.write" && r.decision === "deny").length).toBeGreaterThan(0);
+  });
+
+  it("so does the refusal of a scopePath that is not a scope at all", async () => {
+    mockCapabilityLookup(DEAL_A, "write");
+    const result = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A", scopePath: "system/infrastructure" });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain(HINT);
+    expect(ingestMemory).not.toHaveBeenCalled();
+  });
+
+  it("the retry the refusal suggests is written, at the token's own scope", async () => {
+    mockCapabilityLookup(DEAL_A, "write");
+    const result = await ingestHandler(DEAL_A)({ content: "sessions live in Postgres", name: "Session storage" });
+
+    expect(result.isError).not.toBe(true);
+    expect(ingestMemory).toHaveBeenCalledWith(expect.objectContaining({ scopePath: DEAL_A }));
+  });
+
+  it("a refusal of a call that sent no scopePath does not suggest omitting it", async () => {
+    mockCapabilityLookup(DEAL_A, "read");
+    for (const args of [{}, { scopePath: "" }, { scopePath: "  " }]) {
+      const result = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A", ...args });
+      expect(result.isError, JSON.stringify(args)).toBe(true);
+      expect(result.content[0]!.text, JSON.stringify(args)).not.toContain("omit scopePath");
+    }
+    expect(ingestMemory).not.toHaveBeenCalled();
+  });
+
+  it("the hint does not depend on whether the scope sent was the token's own, so it reveals nothing about it", async () => {
+    // A read-only token: its own scope and a sibling are refused alike, with the same text.
+    mockCapabilityLookup(DEAL_A, "read");
+    const own = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A", scopePath: DEAL_A });
+    const sibling = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A", scopePath: DEAL_B });
+    expect(own.isError).toBe(true);
+    expect(own.content[0]!.text).toContain(HINT);
+    expect(sibling.content[0]!.text).toBe(own.content[0]!.text);
+    expect(ingestMemory).not.toHaveBeenCalled();
+  });
+
+  it("a refusal of the token itself, which omitting scopePath cannot change, gets no hint", async () => {
+    // The capability row belongs to another agent: capabilityOwnerMismatch, a whole-token refusal.
+    vi.mocked(db.$queryRaw).mockResolvedValue([
+      { permission: "write", createdBy: null, agentId: "agent_other" },
+    ] as never);
+    const result = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A", scopePath: DEAL_B });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/^Access denied: /);
+    expect(result.content[0]!.text).not.toContain("omit scopePath");
+    expect(ingestMemory).not.toHaveBeenCalled();
+  });
+});
+
+describe("memory_ingest's reply says where graph extraction stands", () => {
+  // The hosted server extracts after the reply (after() or the Inngest job). The stdio server
+  // has no request scope for after(), so its ingest ran before the reply: saying it
+  // "continues in the background" there would be false.
+  it.each([
+    [
+      "queued behind the reply (hosted)",
+      {},
+      "Stored and readable now; graph extraction continues in the background. Version: v1.",
+    ],
+    [
+      "run before the reply and completed (stdio)",
+      { graphExtraction: "completed" },
+      "Stored and readable now; graph extraction has completed. Version: v1.",
+    ],
+    [
+      "run before the reply, failed, a retry job runs",
+      { graphExtraction: "kept" },
+      "Stored and readable now; graph extraction failed and will be attempted again. Version: v1.",
+    ],
+    [
+      "run before the reply, failed, no retry (self-host)",
+      { graphExtraction: "failed" },
+      "Stored and readable now; graph extraction failed, so the fact is not in the graph. Version: v1.",
+    ],
+    ["a note that gets no graph extraction", { graphExtraction: "none" }, "Stored and readable now. Version: v1."],
+    [
+      "a replay of text already stored",
+      { graphExtraction: "earlier" },
+      "Already stored and readable now: an earlier write stored the same text, so nothing was written. Version: v1.",
+    ],
+  ])("%s", async (_, extraction, opening) => {
+    mockCapabilityLookup(DEAL_A, "write");
+    vi.mocked(ingestMemory).mockResolvedValueOnce({ readableNow: true, versionId: "v1", ...extraction } as never);
+    const result = await ingestHandler(DEAL_A)({ content: "note", name: "Deal A" });
+    expect(result.isError, result.content[0]!.text).not.toBe(true);
+    expect(result.content[0]!.text).toBe(opening);
+  });
+});
+
+describe("memory_ingest's argument descriptions", () => {
+  /** memory_ingest's arguments as registered: their descriptions are what a client lists. */
+  function listedArguments(): Record<string, z.ZodTypeAny> {
+    let shape: Record<string, z.ZodTypeAny> = {};
+    const server = {
+      registerTool: vi.fn((name: string, config: { inputSchema: Record<string, z.ZodTypeAny> }) => {
+        if (name === "memory_ingest") shape = config.inputSchema;
+      }),
+    };
+    registerWillderTools(
+      server as unknown as McpServer,
+      { orgId: ORG, actor: { type: "agent", id: "agent_1", capabilityToken: "wcap_xyz" }, origin: "mcp" },
+      { orgId: ORG, agentId: "agent_1", scopePath: DEAL_A },
+    );
+    return shape;
+  }
+
+  it("say only content and name are needed, and that scopePath is left out unless a scope was given", () => {
+    const args = listedArguments();
+    const required = Object.entries(args)
+      .filter(([, schema]) => !schema.isOptional())
+      .map(([name]) => name);
+    expect(required.sort()).toEqual(["content", "name"]);
+    const scope = args.scopePath!.description!;
+    expect(scope).toMatch(/^Optional/);
+    expect(scope).toContain("your token's own scope");
+    expect(scope).toMatch(/do not (send|invent|guess)/i);
+    expect(args.kind!.description!).toMatch(/^Optional/);
+    expect(args.kind!.description!).toMatch(/omit it for a fact/i);
   });
 });
 

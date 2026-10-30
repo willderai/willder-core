@@ -215,6 +215,10 @@ export function useRunStream(runId: string): RunStream {
   const [state, rawDispatch] = useReducer(reduce, INITIAL);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [submitting, setSubmitting] = useState(false);
+  // Which run id has seen its terminal event: the render-visible mirror of
+  // terminalRef (refs must not be read during render), keyed by run id so a
+  // new run id reads as non-terminal without a reset in the effect.
+  const [terminalRunId, setTerminalRunId] = useState<string | null>(null);
 
   // Highest applied seq, read by the (long-lived) reconnect loop to build afterSeq.
   const seqRef = useRef(0);
@@ -225,11 +229,17 @@ export function useRunStream(runId: string): RunStream {
   // architecture plans are per-domain `section`s; QA plans are `scenario`s (§6).
   const agentRoleRef = useRef<AgentRole>("qa");
 
-  const dispatch = useCallback((ev: RunEvent) => {
-    if (ev.type !== "heartbeat" && ev.seq > seqRef.current) seqRef.current = ev.seq;
-    if (ev.type === "done" || ev.type === "error") terminalRef.current = true;
-    rawDispatch(ev);
-  }, []);
+  const dispatch = useCallback(
+    (ev: RunEvent) => {
+      if (ev.type !== "heartbeat" && ev.seq > seqRef.current) seqRef.current = ev.seq;
+      if (ev.type === "done" || ev.type === "error") {
+        terminalRef.current = true;
+        setTerminalRunId(runId);
+      }
+      rawDispatch(ev);
+    },
+    [runId],
+  );
 
   useEffect(() => {
     // Reset for a new run id.
@@ -386,7 +396,7 @@ export function useRunStream(runId: string): RunStream {
     ...state,
     steps,
     connection,
-    terminal: terminalRef.current,
+    terminal: terminalRunId === runId,
     submitting,
     submitAnswer,
     postEdit,

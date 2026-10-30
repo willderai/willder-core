@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useIsClient } from "@/hooks/use-is-client";
 import { useHelpMode } from "./help-mode-provider";
 
 type HelpTipProps = {
@@ -17,10 +18,9 @@ export function HelpTip({ tip, children, className }: HelpTipProps) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Hide tooltip when help mode is turned off
-  useEffect(() => {
-    if (!isHelpMode) setVisible(false);
-  }, [isHelpMode]);
+  // Hide tooltip when help mode is turned off (adjusted during render, so the
+  // stale tooltip never paints when help mode comes back on).
+  if (!isHelpMode && visible) setVisible(false);
 
   if (!isHelpMode) {
     return <>{children}</>;
@@ -74,11 +74,7 @@ export function HelpTip({ tip, children, className }: HelpTipProps) {
 }
 
 function HelpTooltipPortal({ x, y, tip }: { x: number; y: number; tip: string }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   if (!mounted) return null;
 

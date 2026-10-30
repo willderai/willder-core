@@ -10,7 +10,6 @@
 import { randomUUID } from "node:crypto";
 import type { ChangeOp } from "@/lib/generated/prisma/enums";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { sqlUtcNow } from "@/lib/sql-utc-now";
 import { isValidLtreePath } from "@/services/access";
 import type { AuditOrigin } from "@/services/access/origin";
 import type { ActorType } from "@/types/memory";
@@ -114,6 +113,10 @@ export function summarizeChange(title: string): string {
  * for the org is written under it, so a caller that takes it first and then reads the
  * feed sees every event committed before it, and no other transaction can write one for
  * the org until the caller's commits. Taking it again in the same transaction does not block.
+ *
+ * Writers take the same lock inside the statement that writes the event, through
+ * `public.change_event_next_seq` (migration 20261029120000_change_event_next_seq), whose
+ * namespace and key are this function's.
  */
 export async function lockOrgChangeFeed(tx: ChangeEventTransaction, orgId: string): Promise<void> {
   // `hashtext` narrows orgId to int4, so two orgs can collide and serialize behind
@@ -126,6 +129,56 @@ export async function lockOrgChangeFeed(tx: ChangeEventTransaction, orgId: strin
     FROM pg_advisory_xact_lock(${CHANGE_EVENT_LOCK_NAMESPACE}::int4, hashtext(${orgId})::int4)
   `;
 }
+
+/**
+ * The org's next `seq`, as SQL to place in the statement that uses it. It takes the org's
+ * change-feed lock, held until the caller's transaction commits, and then reads MAX(seq) + 1
+ * with a snapshot taken after the lock was granted, all inside that one statement.
+ *
+ * Held to commit, so the next writer for this org cannot read a next-seq that this one is
+ * about to take. That is what makes seq order commit order: without it, two transactions can
+ * both read MAX(seq) = 40, and the one that wrote 41 can commit while 42 is still open,
+ * leaving a reader that consumed 42 to skip 41 forever. One statement rather than three
+ * (lock, read, insert), because every other writer in the org waits on this lock until the
+ * commit: each round trip inside it is paid again by every writer queued behind it.
+ */
+function nextSeq(orgId: string): Prisma.Sql {
+  return Prisma.sql`public.change_event_next_seq(${orgId})`;
+}
+
+/** Refuse an event a reader could not filter: its scope must be a valid ltree path. */
+function assertEventScope(input: Pick<ChangeEventInput, "scopePath" | "recordType">): void {
+  if (!isValidLtreePath(input.scopePath)) {
+    throw new Error(
+      `change event needs a valid ltree scopePath, got ${JSON.stringify(input.scopePath)}: ` +
+        `pass the scope of the ${input.recordType} record being written`,
+    );
+  }
+}
+
+/** One event's row values, in the column order {@link EVENT_COLUMNS} names, with `seq` given as SQL. */
+function eventValues(input: ChangeEventInput, seq: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`(${randomUUID()}, ${input.orgId}, ${seq}, ${input.scopePath}, ${input.recordType}, ${input.recordId},
+    ${input.op}::"ChangeOp", ${input.actorId}, ${input.actorType ?? null}, ${input.origin ?? null}, ${summarizeChange(input.title)},
+    ${input.authorizedById ?? null}, ${input.task ?? null}, ${input.sessionKey ?? null}, ${WRITTEN_AT})`;
+}
+
+// Prisma's create fills `id` and `createdAt` client-side, so a raw insert spells both out:
+// `id` a v4 UUID as the column's default makes, and `createdAt` the moment the row is written.
+//
+// `createdAt` is the wall clock when the insert evaluates the row (clock_timestamp()), not the
+// transaction's start (now(), sqlUtcNow), so it keeps the meaning Prisma's client-side default
+// gave it: when the event was written, at most the commit's round trip before it is visible.
+// services/memory/dependencies.ts compares it with a derivation's own createdAt to decide
+// whether a source changed after a dependent was built; with the transaction's start, a long
+// transaction would date its change before a dependent built while it was open, and the
+// dependent would never read as stale. Taken as UTC wall-clock time, the column's form,
+// whatever the session TimeZone (lib/sql-utc-now.ts). It is still not monotonic with `seq`:
+// order events by `seq`, never by `createdAt`.
+const WRITTEN_AT = Prisma.sql`(clock_timestamp() AT TIME ZONE 'UTC')`;
+
+const EVENT_COLUMNS = Prisma.sql`("id", "orgId", "seq", "scopePath", "recordType", "recordId", "op",
+  "actorId", "actorType", "origin", "summary", "authorizedById", "task", "sessionKey", "createdAt")`;
 
 /**
  * Append one change event, inside the caller's transaction.
@@ -142,27 +195,16 @@ export async function recordChangeEvent(
   tx: ChangeEventTransaction,
   input: ChangeEventInput,
 ): Promise<{ id: string; seq: bigint }> {
-  const seq = await takeNextSeq(tx, input);
-
-  const created = await tx.changeEvent.create({
-    data: {
-      orgId: input.orgId,
-      seq,
-      scopePath: input.scopePath,
-      recordType: input.recordType,
-      recordId: input.recordId,
-      op: input.op,
-      actorId: input.actorId,
-      actorType: input.actorType,
-      origin: input.origin,
-      summary: summarizeChange(input.title),
-      authorizedById: input.authorizedById,
-      task: input.task,
-      sessionKey: input.sessionKey,
-    },
-  });
-
-  return { id: created.id, seq };
+  assertEventScope(input);
+  // An INSERT ... VALUES of one row returns exactly one row, so the tuple type is the real shape.
+  const [created] = await tx.$queryRaw<[{ id: string; seq: bigint | string }]>`
+    INSERT INTO "change_events" ${EVENT_COLUMNS}
+    VALUES ${eventValues(input, nextSeq(input.orgId))}
+    RETURNING "id", "seq"
+  `;
+  // node-postgres hands BIGINT back as a string rather than losing precision to a
+  // JS number, so the conversion is load-bearing, not a formality.
+  return { id: created.id, seq: BigInt(created.seq) };
 }
 
 /**
@@ -175,29 +217,17 @@ export async function recordChangeEvents(
   inputs: readonly ChangeEventInput[],
 ): Promise<void> {
   if (inputs.length === 0) return;
-  for (const input of inputs.slice(1)) {
+  for (const input of inputs) {
     if (input.orgId !== inputs[0]!.orgId) throw new Error("recordChangeEvents takes one org's events per call");
-    if (!isValidLtreePath(input.scopePath))
-      throw new Error(`change event needs a valid ltree scopePath, got ${JSON.stringify(input.scopePath)}`);
+    assertEventScope(input);
   }
-  const first = await takeNextSeq(tx, inputs[0]!);
-  await tx.changeEvent.createMany({
-    data: inputs.map((input, i) => ({
-      orgId: input.orgId,
-      seq: first + BigInt(i),
-      scopePath: input.scopePath,
-      recordType: input.recordType,
-      recordId: input.recordId,
-      op: input.op,
-      actorId: input.actorId,
-      actorType: input.actorType,
-      origin: input.origin,
-      summary: summarizeChange(input.title),
-      authorizedById: input.authorizedById,
-      task: input.task,
-      sessionKey: input.sessionKey,
-    })),
-  });
+  // The first seq is read once, in a subquery the planner runs once, so the rows take
+  // first, first + 1, ... in the order given.
+  await tx.$queryRaw`
+    INSERT INTO "change_events" ${EVENT_COLUMNS}
+    SELECT v.* FROM (SELECT ${nextSeq(inputs[0]!.orgId)} AS first) f,
+    LATERAL (VALUES ${Prisma.join(inputs.map((input, i) => eventValues(input, Prisma.sql`f.first + ${i}`)))}) AS v
+  `;
 }
 
 /**
@@ -217,52 +247,14 @@ export async function recordFactCreateOnce(
   input: Omit<ChangeEventInput, "recordType" | "op">,
 ): Promise<{ id: string; seq: bigint } | null> {
   const event = { ...input, recordType: FACT_RECORD_TYPE, op: "create" as const };
-  const seq = await takeNextSeq(tx, event);
-  // Prisma's create has no ON CONFLICT, and it fills `id` and `createdAt` client-side,
-  // so all three are spelled out here. `createdAt` is sqlUtcNow, not the column's
-  // CURRENT_TIMESTAMP default, which converts through the session TimeZone. The
-  // conflict target names the index's predicate as literals, which is how Postgres
-  // matches a partial unique index.
-  const inserted = await tx.$queryRaw<{ id: string }[]>`
-    INSERT INTO "change_events"
-      ("id", "orgId", "seq", "scopePath", "recordType", "recordId", "op",
-       "actorId", "actorType", "origin", "summary", "authorizedById", "task", "sessionKey", "createdAt")
-    VALUES
-      (${randomUUID()}, ${event.orgId}, ${seq}, ${event.scopePath}, 'fact', ${event.recordId}, 'create',
-       ${event.actorId}, ${event.actorType}, ${event.origin}, ${summarizeChange(event.title)},
-       ${event.authorizedById ?? null}, ${event.task ?? null}, ${event.sessionKey ?? null}, ${sqlUtcNow})
+  assertEventScope(event);
+  // Prisma's create has no ON CONFLICT. The conflict target names the index's predicate
+  // as literals, which is how Postgres matches a partial unique index.
+  const inserted = await tx.$queryRaw<{ id: string; seq: bigint | string }[]>`
+    INSERT INTO "change_events" ${EVENT_COLUMNS}
+    VALUES ${eventValues(event, nextSeq(event.orgId))}
     ON CONFLICT ("orgId", "recordId") WHERE "recordType" = 'fact' AND "op" = 'create' DO NOTHING
-    RETURNING "id"
+    RETURNING "id", "seq"
   `;
-  return inserted.length === 1 ? { id: inserted[0].id, seq } : null;
-}
-
-/**
- * Validate an event and take its org's next `seq`, under the org's change-feed lock,
- * which then stays held until the caller's transaction commits.
- */
-async function takeNextSeq(tx: ChangeEventTransaction, input: ChangeEventInput): Promise<bigint> {
-  if (!isValidLtreePath(input.scopePath)) {
-    throw new Error(
-      `change event needs a valid ltree scopePath, got ${JSON.stringify(input.scopePath)}: ` +
-        `pass the scope of the ${input.recordType} record being written`,
-    );
-  }
-
-  // Held until the caller's transaction commits, so the next writer for this org
-  // cannot read a next-seq that this one is about to take. That is what makes seq
-  // order commit order: without it, two transactions can both read MAX(seq) = 40,
-  // and the one that wrote 41 can commit while 42 is still open, leaving a reader
-  // that consumed 42 to skip 41 forever.
-  await lockOrgChangeFeed(tx, input.orgId);
-
-  // An aggregate without GROUP BY always returns exactly one row, so the tuple
-  // type here is the real shape, not an optimistic one.
-  const [{ next }] = await tx.$queryRaw<[{ next: bigint | string }]>`
-    SELECT COALESCE(MAX("seq"), 0) + 1 AS next FROM "change_events" WHERE "orgId" = ${input.orgId}
-  `;
-  // node-postgres hands BIGINT back as a string rather than losing precision to a
-  // JS number, so the conversion is load-bearing, not a formality.
-  const seq = BigInt(next);
-  return seq;
+  return inserted.length === 1 ? { id: inserted[0].id, seq: BigInt(inserted[0].seq) } : null;
 }

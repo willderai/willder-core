@@ -28,6 +28,16 @@ sign people in, and it also loads Google Fonts, Vercel Analytics' script in deve
 telemetry (`NEXT_TELEMETRY_DISABLED=1` turns that off) and Clerk's own telemetry. The MCP server
 and every step below use none of these.
 
+No hosted plan limit applies. The self-host org (and the `local-dev` org `scripts/dev-token.ts`
+makes) is stored on the schema's default plan, `free`, but the free plan's 1,000-episode memory
+cap is not enforced for it, so memory writes keep being accepted past 1,000
+(`isLocalInstallOrg` in [`lib/selfhost-install.ts`](../lib/selfhost-install.ts), checked by
+`checkEpisodeCap` in [`services/guardrails.ts`](../services/guardrails.ts)). An install made
+before this change needs nothing re-run: the check is made on every write. The cap applies
+again if the process looks like a hosted deployment (`VERCEL` or `VERCEL_ENV` set, or a live
+`sk_live_`/`pk_live_` Clerk key), and orgs the web app syncs from Clerk keep the hosted plan
+rules.
+
 Neo4j's anonymous usage report, Graphiti's telemetry and the Prisma CLI's usage check
 (`checkpoint.prisma.io`) are on by default. The compose file turns off the first two,
 `.env.selfhost.example` sets `CHECKPOINT_DISABLE=1` for the third, and the memory service
@@ -182,6 +192,39 @@ The scripts hold `DATABASE_URL`, which reaches every table without the access ch
 ([README](../README.md#credentials-that-bypass-the-authorizer)). So `--as` and the token rules
 make the export and the tokens the ones that person would get in the web app; they are not a
 boundary against whoever runs the scripts, who can read the database directly.
+
+## A local model for extraction
+
+Any OpenAI-compatible server works as the model endpoint, Ollama included. Set the three model
+variables in `.env` to it, and give `OPENAI_API_KEY` any non-empty value if the server takes no
+key. For Ollama serving qwen3:14b:
+
+```bash
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
+OPENAI_MODEL_EXTRACT=qwen3:14b
+OPENAI_EXTRACT_EXTRA_BODY='{"reasoning_effort":"none"}'
+```
+
+`localhost` serves when the memory service runs on this machine too ([without
+Docker](#without-docker)). With docker compose, both this machine and the memory service's
+container must reach the address, and Ollama listens on localhost only unless `OLLAMA_HOST`
+says otherwise.
+
+A reasoning model (qwen3, for one) thinks before every reply unless the request says not to.
+Each write makes extraction calls, so a write can then take minutes, and with `npm run mcp` the
+reply to `memory_ingest` waits for the Node side's extraction call: on 2026-10-29 qwen3:14b on
+Ollama took about 2.5 minutes per call and the client gave up at its 60 s timeout. The last
+line above turns the thinking off for extraction requests only.
+
+`OPENAI_EXTRACT_EXTRA_BODY` is a JSON object whose fields are added to every request to the
+extraction model, by both the Node side and the memory service; they replace a request's own
+sampling fields of the same name. Unset, nothing is added. It may not set `model`, `messages`,
+`tools`, `tool_choice`, `functions`, `function_call`, `response_format`, `stream`,
+`stream_options` or `n`, nor `store`, `metadata` or `prompt_cache_retention`, which would have
+the provider retain your content. Anything but such an object stops `npm run mcp` and the
+memory service at startup, and fails each extraction call, with a line naming the variable. Send only fields your server accepts:
+some servers refuse a field they do not know.
 
 ## Without Docker
 

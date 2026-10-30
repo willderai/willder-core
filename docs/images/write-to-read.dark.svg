@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="286" viewBox="0 0 760 286" role="img" aria-labelledby="write-to-read-dark-title write-to-read-dark-desc" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title id="write-to-read-dark-title">Write-to-read latency on production, by load</title>
+<desc id="write-to-read-dark-desc">Grouped horizontal bars, milliseconds, median and p95 for three loads. One writer at a time, 60 samples: median 538, p95 881. Six writers at once, 60 samples: median 688, p95 1292. Every write retried with one writer revoked halfway, 66 samples: median 834, p95 1588.</desc>
+<rect width="760" height="286" rx="12" fill="#0a2721"/>
+<rect x="274" y="28" width="12" height="12" rx="3" fill="#2fa6ad"/>
+<text x="292" y="38" font-size="13" fill="#efefe9">Median</text>
+<rect x="347.2" y="28" width="12" height="12" rx="3" fill="#d4724a"/>
+<text x="365.2" y="38" font-size="13" fill="#efefe9">p95</text>
+<line x1="274" y1="56" x2="274" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="274" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">0</text>
+<line x1="343.7" y1="56" x2="343.7" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="343.7" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">300</text>
+<line x1="413.3" y1="56" x2="413.3" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="413.3" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">600</text>
+<line x1="483" y1="56" x2="483" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="483" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">900</text>
+<line x1="552.7" y1="56" x2="552.7" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="552.7" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">1,200</text>
+<line x1="622.3" y1="56" x2="622.3" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="622.3" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">1,500</text>
+<line x1="692" y1="56" x2="692" y2="242" stroke="#2b4a42" stroke-width="1"/>
+<text x="692" y="260" font-size="12" text-anchor="middle" fill="#d4d4cd">1,800</text>
+<text x="692" y="278" font-size="12" text-anchor="end" fill="#d4d4cd">ms</text>
+<text x="262" y="96.5" font-size="13" text-anchor="end" fill="#efefe9">One writer at a time (n=60)</text>
+<path d="M274 73h120.9a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-120.9z" fill="#2fa6ad"/>
+<text x="404.9" y="86.5" font-size="12" fill="#efefe9">538</text>
+<path d="M274 93h200.6a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-200.6z" fill="#d4724a"/>
+<text x="484.6" y="106.5" font-size="12" fill="#efefe9">881</text>
+<text x="262" y="156.5" font-size="13" text-anchor="end" fill="#efefe9">Six writers at once (n=60)</text>
+<path d="M274 133h155.8a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-155.8z" fill="#2fa6ad"/>
+<text x="439.8" y="146.5" font-size="12" fill="#efefe9">688</text>
+<path d="M274 153h296a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-296z" fill="#d4724a"/>
+<text x="580" y="166.5" font-size="12" fill="#efefe9">1,292</text>
+<text x="262" y="216.5" font-size="13" text-anchor="end" fill="#efefe9">Retries, one writer revoked (n=66)</text>
+<path d="M274 193h189.7a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-189.7z" fill="#2fa6ad"/>
+<text x="473.7" y="206.5" font-size="12" fill="#efefe9">834</text>
+<path d="M274 213h364.8a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-364.8z" fill="#d4724a"/>
+<text x="648.8" y="226.5" font-size="12" fill="#efefe9">1,588</text>
+<line x1="274" y1="56" x2="274" y2="242" stroke="#d4d4cd" stroke-width="1"/>
+</svg>

@@ -163,6 +163,12 @@ describe.skipIf(!QA_URL)("function search_path", () => {
       [org, member, `org_${org}`],
     );
     expect(held[0].holds, "the access fire below must find a row, or its mutant marks only by plan luck").toBe(true);
+    // One event in the org, so change_event_next_seq's comparison has a row to run on.
+    await client.query(
+      `INSERT INTO "change_events" ("id","orgId","seq","scopePath","recordType","recordId","op","summary","actorId")
+       VALUES ($1, $2, 1, $3, 'fact', 'sp-fact', 'create', 'sp', 'sp-agent')`,
+      [randomUUID(), org, `org_${org}`],
+    );
     await client.query(`CREATE SEQUENCE ${MARKER}`);
     await client.query(`CREATE ROLE ${attacker} NOLOGIN`);
     await client.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${attacker}`);
@@ -270,6 +276,12 @@ describe.skipIf(!QA_URL)("function search_path", () => {
       { fn: "capabilities_issuer_bound()", as: "victim", sql: capability[0], params: [...capability[1]] },
       { fn: "capabilities_admin_window()", as: "victim", sql: capability[0], params: [...capability[1]] },
       { fn: "org_deletion_refuse_write()", as: "victim", sql: capability[0], params: [...capability[1]] },
+      {
+        fn: "change_event_next_seq(text)",
+        as: "victim",
+        sql: `SELECT public.change_event_next_seq($1)`,
+        params: [org],
+      },
     ];
   };
 

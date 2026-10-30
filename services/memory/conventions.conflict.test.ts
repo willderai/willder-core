@@ -6,6 +6,7 @@
 // serving them.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { insertedChangeEvents } from "./change-events.testsupport";
 
 const ORG = "org-cuid-rules";
 const SCOPE = "org_org-cuid-rules.cfw";
@@ -109,9 +110,17 @@ vi.mock("@/lib/db", () => {
     memoryChunk: { findMany: vi.fn(async () => []) },
     // Every writer in this file is an agent: no actor id is a user.
     user: { count: vi.fn(async () => 0) },
-    $queryRaw: vi.fn(async (query: Prisma.Sql | TemplateStringsArray) =>
-      Array.isArray(query) ? [{ next: BigInt(store.events.length + 1) }] : [],
-    ),
+    $queryRaw: vi.fn(async (query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]) => {
+      // recordChangeEvent writes its event with one raw INSERT; record it as create did.
+      const written = insertedChangeEvents(query, values);
+      if (written) {
+        return written.map((event) => {
+          store.events.push(event as unknown as Record<string, string>);
+          return { id: `event-${store.events.length}`, seq: BigInt(store.events.length) };
+        });
+      }
+      return [];
+    }),
     $transaction: vi.fn(),
   };
   db.$transaction.mockImplementation((fn: (tx: typeof db) => unknown) => fn(db));

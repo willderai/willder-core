@@ -70,16 +70,19 @@ export function sinceLastSessionSql(
     ),
     "changed" AS (
       SELECT e."actorId", e."task"
-      FROM "change_events" e, "lastCall" l
+      FROM "change_events" e
       WHERE e."orgId" = ${ctx.orgId}
-        AND l."at" < ${sqlUtcNow} - make_interval(secs => ${sessionIdleMs / 1000})
+        -- Read as a scalar, so the plan decides it once, before any event is read: a session
+        -- that is not a return (no earlier call, or one within the idle window) walks nothing.
+        -- Joined as a row, it was checked against each event of the org's walk instead.
+        AND (SELECT "at" FROM "lastCall") < ${sqlUtcNow} - make_interval(secs => ${sessionIdleMs / 1000})
         AND e."seq" > COALESCE(
           (SELECT "lastSeq" FROM "agent_cursors" WHERE "orgId" = ${ctx.orgId} AND "agentId" = ${ctx.actor.id}),
           0
         )
         -- At or after: a change stamped in the last call's millisecond was not served by it
         -- unless the cursor passed it, which the filter above already checks.
-        AND e."createdAt" >= l."at"
+        AND e."createdAt" >= (SELECT "at" FROM "lastCall")
         AND e."actorId" <> ${ctx.actor.id}
         AND e."recordType" <> ${WORKING_NOTE_RECORD_TYPE}
         AND ${inScope}

@@ -23,6 +23,22 @@ import type { BrowserToolsHandle } from "./qa-browser";
 // the caller (createBrowserTools) degrades gracefully to the in-process path.
 const SANDBOX_MODULE = "@vercel/sandbox";
 
+// The slice of `@vercel/sandbox` this file drives, declared here because the module is
+// resolved only at runtime (above). `exitCode` is read defensively below (a number, or
+// something awaitable), so it is typed as loosely as that read handles.
+interface SandboxCommandResult {
+  stdout(): Promise<string>;
+  stderr?: () => Promise<string>;
+  exitCode?: number | Promise<number> | null;
+}
+interface SandboxInstance {
+  runCommand(cmd: string, args: string[]): Promise<SandboxCommandResult>;
+  stop(): Promise<void>;
+}
+interface SandboxModule {
+  Sandbox: { create(params: Record<string, unknown>): Promise<SandboxInstance> };
+}
+
 // System libraries Chromium needs on the sandbox VM (Amazon Linux / dnf), per Vercel's guide.
 // Only installed on cold VMs; a pre-built sandbox snapshot (AGENT_BROWSER_SNAPSHOT_ID) skips this.
 const CHROMIUM_SYSTEM_DEPS = [
@@ -91,7 +107,7 @@ export async function createSandboxBrowserTools(opts: {
   // @vercel/sandbox is an OPTIONAL dep, only present when QA_SANDBOX is enabled and it's
   // been installed. turbopackIgnore keeps the bundler from trying to resolve it at build
   // time (default path never imports it); it resolves at runtime once installed.
-  const { Sandbox } = (await import(/* turbopackIgnore: true */ SANDBOX_MODULE)) as any;
+  const { Sandbox } = (await import(/* turbopackIgnore: true */ SANDBOX_MODULE)) as SandboxModule;
   const snapshotId = process.env.AGENT_BROWSER_SNAPSHOT_ID;
   const credentials = sandboxCredentials();
 

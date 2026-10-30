@@ -106,6 +106,17 @@ describe.skipIf(!QA_URL)("the entity resolver never stores less than the person 
     expect((await resolve(TEXT)).resolvedText).toBe(TEXT);
   });
 
+  it("fails, naming the variable, on a malformed OPENAI_EXTRACT_EXTRA_BODY instead of silently skipping the model pass", async () => {
+    model.reply = reply(REWRITTEN);
+    vi.stubEnv("OPENAI_EXTRACT_EXTRA_BODY", '{"store":true}');
+    try {
+      await expect(resolve(TEXT)).rejects.toThrow(/OPENAI_EXTRACT_EXTRA_BODY may not set store/);
+      expect(model.calls).toBe(0);
+    } finally {
+      vi.stubEnv("OPENAI_EXTRACT_EXTRA_BODY", "");
+    }
+  });
+
   it("an alias-registry entity with a blank name leaves its aliases as written", async () => {
     await db.entityAlias.create({
       data: { orgId: ORG, entityType: "account", entityId: "acct-blank", canonicalName: "   ", aliases: ["Acme"] },

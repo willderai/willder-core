@@ -96,7 +96,7 @@ interface ClaimedRow {
  * an attempt the platform kills mid-step still backs off. `now` fixes the clock, for tests.
  */
 export async function retryDeferredGraphExtractions(
-  extract: (job: IngestInput) => Promise<void>,
+  extract: (job: IngestInput) => Promise<unknown>,
   options: { now?: Date; limit?: number } = {},
 ): Promise<RetryPass> {
   const clock = () => options.now ?? new Date();

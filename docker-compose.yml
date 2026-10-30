@@ -62,6 +62,8 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_VERSION: ${OPENAI_API_VERSION:-}
       OPENAI_MODEL_EXTRACT: ${OPENAI_MODEL_EXTRACT:-gpt-4o-mini}
+      # Extra JSON fields for every extraction request; unset sends none (docs/self-host.md).
+      OPENAI_EXTRACT_EXTRA_BODY: ${OPENAI_EXTRACT_EXTRA_BODY:-}
       # Graphiti sends anonymous telemetry unless this is false.
       GRAPHITI_TELEMETRY_ENABLED: "false"
       # The embedder was downloaded when the image was built; never fetch it again.

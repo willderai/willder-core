@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="310" viewBox="0 0 760 310" role="img" aria-labelledby="deletion-read-paths-dark-title deletion-read-paths-dark-desc" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title id="deletion-read-paths-dark-title">When each of the seven agent read paths stopped presenting a deleted fact</title>
+<desc id="deletion-read-paths-dark-desc">Horizontal bars, milliseconds after the delete until the fact was absent, one bar per agent read path, all within the 30-second limit; signed-in web routes were not measured. memory_query 0, memory_entity 557, memory_version 900, memory_changes 1049, change notice 1274, GET changes 1870, task-start brief 2311.</desc>
+<rect width="760" height="310" rx="12" fill="#0a2721"/>
+<line x1="274" y1="22" x2="274" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="274" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">0</text>
+<line x1="357.6" y1="22" x2="357.6" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="357.6" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">500</text>
+<line x1="441.2" y1="22" x2="441.2" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="441.2" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">1,000</text>
+<line x1="524.8" y1="22" x2="524.8" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="524.8" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">1,500</text>
+<line x1="608.4" y1="22" x2="608.4" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="608.4" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">2,000</text>
+<line x1="692" y1="22" x2="692" y2="266" stroke="#2b4a42" stroke-width="1"/>
+<text x="692" y="284" font-size="12" text-anchor="middle" fill="#d4d4cd">2,500</text>
+<text x="692" y="302" font-size="12" text-anchor="end" fill="#d4d4cd">ms</text>
+<text x="262" y="49.5" font-size="13" text-anchor="end" fill="#efefe9">memory_query (search)</text>
+<rect x="274" y="35" width="1.5" height="20" fill="#2fa6ad"/>
+<text x="280" y="49.5" font-size="12" fill="#efefe9">0</text>
+<text x="262" y="83.5" font-size="13" text-anchor="end" fill="#efefe9">memory_entity (graph)</text>
+<path d="M274 69h89.1a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-89.1z" fill="#2fa6ad"/>
+<text x="373.1" y="83.5" font-size="12" fill="#efefe9">557</text>
+<text x="262" y="117.5" font-size="13" text-anchor="end" fill="#efefe9">memory_version</text>
+<path d="M274 103h146.5a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-146.5z" fill="#2fa6ad"/>
+<text x="430.5" y="117.5" font-size="12" fill="#efefe9">900</text>
+<text x="262" y="151.5" font-size="13" text-anchor="end" fill="#efefe9">memory_changes (feed)</text>
+<path d="M274 137h171.4a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-171.4z" fill="#2fa6ad"/>
+<text x="455.4" y="151.5" font-size="12" fill="#efefe9">1,049</text>
+<text x="262" y="185.5" font-size="13" text-anchor="end" fill="#efefe9">Change notice</text>
+<path d="M274 171h209a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-209z" fill="#2fa6ad"/>
+<text x="493" y="185.5" font-size="12" fill="#efefe9">1,274</text>
+<text x="262" y="219.5" font-size="13" text-anchor="end" fill="#efefe9">GET /api/changes (feed)</text>
+<path d="M274 205h308.7a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-308.7z" fill="#2fa6ad"/>
+<text x="592.7" y="219.5" font-size="12" fill="#efefe9">1,870</text>
+<text x="262" y="253.5" font-size="13" text-anchor="end" fill="#efefe9">Task-start brief</text>
+<path d="M274 239h382.4a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-382.4z" fill="#2fa6ad"/>
+<text x="666.4" y="253.5" font-size="12" fill="#efefe9">2,311</text>
+<line x1="274" y1="22" x2="274" y2="266" stroke="#d4d4cd" stroke-width="1"/>
+</svg>

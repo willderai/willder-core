@@ -235,6 +235,7 @@ listed here nor recorded there with the reason it does not reach memory.
 - [mcp/README.md](mcp/README.md): tools, permissions, the local stdio server.
 - [docs/development.md](docs/development.md): the web app and local development.
 - [docs/willder_api.md](docs/willder_api.md): the route map.
+- [docs/architecture.md](docs/architecture.md): the architecture, with diagrams and measured numbers.
 - [docs/README.md](docs/README.md): every document in this repository, one line each.
 
 ## Contributing and security

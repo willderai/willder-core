@@ -13,6 +13,7 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { assertDatabaseReachable } from "@/lib/db-startup";
 import { STDIO_MCP_ENV, assertRequiredEnv } from "@/lib/required-env";
+import { extractRequestExtras } from "@/lib/llm-extract-options";
 import { resolveCapability, type AccessContext } from "@/services/access";
 import { registerWillderTools } from "./tools";
 import { createWillderServer } from "./willder-server";
@@ -22,6 +23,9 @@ import { registerWillderPrompts } from "./prompts";
 
 async function main() {
   assertRequiredEnv(STDIO_MCP_ENV);
+  // A malformed OPENAI_EXTRACT_EXTRA_BODY stops the server here with one line, not at the
+  // first write's graph extraction (lib/llm-extract-options.ts).
+  extractRequestExtras();
   const token = process.env.WILLDER_CAPABILITY_TOKEN?.trim() ?? "";
 
   // Before the first Prisma call: a missing or stopped database fails here with

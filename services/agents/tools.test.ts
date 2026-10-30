@@ -41,12 +41,24 @@ function makeRc(vals: Record<string, string | undefined> = {}): RuntimeContext {
   return rc;
 }
 
+// Mastra types a tool's output as `unknown` when it declares no outputSchema
+// (ours don't). This is the union of fields the assertions below read, across
+// all four tools; each test's own expect() calls check the fields really exist.
+type ToolResult = {
+  results: string;
+  content: string;
+  facts: { fact: string }[];
+  notes: unknown;
+  error: string;
+  episodeId: string | null;
+};
+
 // Mastra's Tool type declares `execute` optional (a tool can be schema-only);
 // ours are always defined, so this narrows once instead of asserting at
 // every call site.
-function run(tool: { execute?: (args: never) => Promise<any> }, args: never) {
+function run(tool: { execute?: (args: never) => Promise<unknown> }, args: never): Promise<ToolResult> {
   if (!tool.execute) throw new Error("tool has no execute");
-  return tool.execute(args);
+  return tool.execute(args) as Promise<ToolResult>;
 }
 
 beforeEach(() => vi.clearAllMocks());

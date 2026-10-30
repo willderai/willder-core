@@ -68,10 +68,14 @@ export default function AgentRunWorkspacePage() {
     };
   }, [paused, run.checkpoint?.checkpointId]);
 
-  // Default the mobile view to the artifact once the run completes.
-  useEffect(() => {
+  // Default the mobile view to the artifact once the run completes. Adjusted
+  // during render on the false->true edge (starting from false, so a run that
+  // is already terminal on first load opens on the artifact too).
+  const [sawTerminal, setSawTerminal] = useState(false);
+  if (terminal !== sawTerminal) {
+    setSawTerminal(terminal);
     if (terminal) setMobileTab("artifact");
-  }, [terminal]);
+  }
 
   async function handleAnswer(payload: Parameters<typeof run.submitAnswer>[0]) {
     setAnswerError(null);

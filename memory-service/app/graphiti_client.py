@@ -68,12 +68,33 @@ from .model_work import ModelQueue  # noqa: E402
 
 
 class ModelProviderClient(AsyncOpenAI):
-    """The OpenAI SDK client, except that it never retries a 429 itself.
+    """The OpenAI SDK client, except that it never retries a 429 itself, and that every chat
+    completion it sends carries `extra_body` (OPENAI_EXTRACT_EXTRA_BODY), when one is set.
 
     The SDK asks again twice on every 429, a used-up quota included (three calls, not one).
     Graphiti retries rate limits with its own backoff, and QuotaAwareLLMClient stops it for
     a quota refusal, so one layer decides. Timeouts and server errors keep the SDK's retries.
+
+    Graphiti builds the extraction requests itself, so the extra fields are merged here, at
+    the one client every one of them goes through. They win over Graphiti's own sampling
+    fields; app/config.py has already refused any that would change the request's model,
+    messages, tools or response format.
     """
+
+    def __init__(self, *args, extra_body: dict | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._extract_extra_body = dict(extra_body or {})
+
+    async def _prepare_options(self, options):
+        options = await super()._prepare_options(options)
+        body = options.json_data
+        if (
+            self._extract_extra_body
+            and options.url.endswith("/chat/completions")
+            and isinstance(body, dict)
+        ):
+            options.json_data = {**body, **self._extract_extra_body}
+        return options
 
     def _should_retry(self, response) -> bool:
         if response.status_code == 429:
@@ -367,7 +388,9 @@ async def _build_graphiti() -> Graphiti:
             ),
             max_tokens=8192,
             client=ModelProviderClient(
-                api_key=settings.llm_api_key, base_url=settings.llm_base_url
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                extra_body=settings.llm_extract_extra_body,
             ),
         )
         driver = await open_graph_driver()

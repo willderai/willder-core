@@ -341,8 +341,18 @@ export function GraphExplorer({
   const [pos, setPos] = useState<Record<string, Pos>>({});
   const [selectedNode, setSelectedNode] = useState<MemoryNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<MemoryEdge | null>(null);
-  const [entityDetail, setEntityDetail] = useState<MemoryEntity | null>(null);
-  const [entityLoading, setEntityLoading] = useState(false);
+  // The last finished entity lookup, tagged with the selection (node object +
+  // scope) it answered. Detail and loading are derived from it, so a new
+  // selection reads as loading -- and no selection as empty -- without a
+  // setState in the fetch effect.
+  const [entityFetch, setEntityFetch] = useState<{
+    node: MemoryNode;
+    scope: string | null | undefined;
+    detail: MemoryEntity | null;
+  } | null>(null);
+  const entityAnswered = !!selectedNode && entityFetch?.node === selectedNode && entityFetch.scope === scope;
+  const entityDetail = entityAnswered ? entityFetch.detail : null;
+  const entityLoading = !!selectedNode && !entityAnswered;
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -475,7 +485,9 @@ export function GraphExplorer({
   );
 
   useEffect(() => {
-    void fetchGraph();
+    void (async () => {
+      await fetchGraph();
+    })();
   }, [fetchGraph]);
 
   const handleRefresh = useCallback(async () => {
@@ -485,17 +497,23 @@ export function GraphExplorer({
   }, [fetchGraph]);
 
   useEffect(() => {
-    if (!selectedNode) {
-      setEntityDetail(null);
-      return;
-    }
-    setEntityLoading(true);
+    if (!selectedNode) return;
+    const node = selectedNode;
+    // Set when the selection (or scope) moves on: a slow answer for an earlier
+    // node must not overwrite the current node's entry.
+    let stale = false;
     const qs = scope ? `?scope=${encodeURIComponent(scope)}` : "";
-    fetch(`/api/memory/entities/${encodeURIComponent(selectedNode.uuid)}${qs}`)
+    fetch(`/api/memory/entities/${encodeURIComponent(node.uuid)}${qs}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setEntityDetail(data ?? null))
-      .catch(() => setEntityDetail(null))
-      .finally(() => setEntityLoading(false));
+      .then((data) => {
+        if (!stale) setEntityFetch({ node, scope, detail: data ?? null });
+      })
+      .catch(() => {
+        if (!stale) setEntityFetch({ node, scope, detail: null });
+      });
+    return () => {
+      stale = true;
+    };
   }, [selectedNode, scope]);
 
   async function removeNode(uuid: string) {
@@ -514,7 +532,6 @@ export function GraphExplorer({
           : g,
       );
       setSelectedNode(null);
-      setEntityDetail(null);
     } finally {
       setRemovingNode(null);
     }
@@ -559,7 +576,6 @@ export function GraphExplorer({
           : g,
       );
       setSelectedNode(null);
-      setEntityDetail(null);
       // Full refresh to show the transferred edges on the target node
       setTimeout(() => void fetchGraph(), 800);
     } catch {
@@ -850,7 +866,6 @@ export function GraphExplorer({
                     justSelectedEdge.current = true;
                     setSelectedEdge(e);
                     setSelectedNode(null);
-                    setEntityDetail(null);
                   }}
                   onClick={(ev) => ev.stopPropagation()}
                   onPointerEnter={() => setHoveredEdge(e.uuid)}
@@ -1047,7 +1062,6 @@ export function GraphExplorer({
                   <button
                     onClick={() => {
                       setSelectedNode(null);
-                      setEntityDetail(null);
                       setMerging(false);
                     }}
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-fg-subtle transition-colors hover:bg-fg/5 hover:text-fg"

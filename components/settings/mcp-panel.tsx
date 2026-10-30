@@ -383,7 +383,9 @@ export function McpPanel() {
   }, []);
 
   useEffect(() => {
-    load();
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   // Disconnecting has to actually cut the connection off, or a token pasted

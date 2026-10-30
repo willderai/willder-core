@@ -16,7 +16,7 @@ vi.mock("@/lib/db", () => ({
     $transaction(fn: (tx: unknown) => unknown) {
       return fn(this);
     },
-    $queryRaw: vi.fn().mockResolvedValue([{ next: BigInt(1) }]),
+    $queryRaw: vi.fn().mockResolvedValue([{ next: BigInt(1), id: "change_1", seq: BigInt(1) }]),
     changeEvent: { create: vi.fn().mockResolvedValue({ id: "change_1" }), findFirst: vi.fn().mockResolvedValue(null) },
     contactIdempotencyKey: { updateMany: vi.fn() },
     org: { findUnique: vi.fn(), update: vi.fn() },

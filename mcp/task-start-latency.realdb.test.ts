@@ -45,10 +45,11 @@ const ROOT = "org_1";
 const AGENT = "agent-latency";
 
 /** Every statement the pg driver sends, and the most it had in flight at once. */
-const wire = { statements: 0, inFlight: 0, maxInFlight: 0 };
+const wire = { statements: 0, inFlight: 0, maxInFlight: 0, sent: [] as { text: string; values: unknown[] }[] };
 function resetWire(): void {
   wire.statements = 0;
   wire.maxInFlight = 0;
+  wire.sent = [];
 }
 
 describe.skipIf(!QA_URL)("task-start block cost, against a real database", () => {
@@ -227,6 +228,9 @@ describe.skipIf(!QA_URL)("task-start block cost, against a real database", () =>
     // pg.Client, so this sees pooled queries and transactions alike.
     pg.Client.prototype.query = function (this: pg.Client, ...args: unknown[]) {
       wire.statements++;
+      const [config, values] = args as [{ text?: string; values?: unknown[] } | string, unknown[] | undefined];
+      if (typeof config === "string") wire.sent.push({ text: config, values: values ?? [] });
+      else if (config?.text) wire.sent.push({ text: config.text, values: config.values ?? values ?? [] });
       wire.inFlight++;
       wire.maxInFlight = Math.max(wire.maxInFlight, wire.inFlight);
       const result = (originalQuery as (...a: unknown[]) => unknown).apply(this, args);
@@ -694,6 +698,84 @@ describe.skipIf(!QA_URL)("task-start block cost, against a real database", () =>
     );
     expect(wire.statements, OVER_BUDGET).toBeLessThanOrEqual(FIRST_CALL_STATEMENTS);
     expect(wire.maxInFlight).toBe(1);
+  });
+
+  it("reads no change event for the since-your-last-session line when the session is not a return", async () => {
+    const { sinceLastSessionSql } = await import("@/services/memory/since-last-session");
+    const { flattenSql } = await import("@/services/access/scope-containment");
+    /** Every change_events row the line's statement read: those it returned plus those its filters removed. */
+    const eventsRead = async (): Promise<number> => {
+      const query = Prisma.sql`EXPLAIN (ANALYZE, FORMAT JSON) SELECT ${sinceLastSessionSql(ctx(), ROOT, "", 30 * 60 * 1000)} AS "since"`;
+      const [row] = await db.$queryRaw<{ "QUERY PLAN": { Plan: PlanNode }[] }[]>(...flattenSql(query));
+      let read = 0;
+      const walk = (node: PlanNode) => {
+        if (node["Relation Name"] === "change_events")
+          read +=
+            node["Actual Rows"] + (node["Rows Removed by Filter"] ?? 0) + (node["Rows Removed by Join Filter"] ?? 0);
+        for (const child of node.Plans ?? []) walk(child);
+      };
+      walk(row!["QUERY PLAN"][0]!.Plan);
+      return read;
+    };
+    type PlanNode = {
+      "Relation Name"?: string;
+      "Actual Rows": number;
+      "Rows Removed by Filter"?: number;
+      "Rows Removed by Join Filter"?: number;
+      Plans?: PlanNode[];
+    };
+
+    // No earlier call in the org: a first session. The seed holds 400 events, and the old
+    // statement walked every one of the org's to learn there was nothing to count.
+    expect(await eventsRead()).toBe(0);
+    // An earlier call inside the idle window: the same session going on, not a return.
+    const recently = new Date(Date.now() - 60 * 1000);
+    await db.taskStartDelivery.create({
+      data: {
+        orgId: ORG,
+        agentId: AGENT,
+        sessionKey: "s-recent",
+        scopePath: ROOT,
+        taskKey: "",
+        revision: "recent",
+        deliveredAt: recently,
+        lastCallAt: recently,
+      },
+    });
+    expect(await eventsRead()).toBe(0);
+    // A return still walks the events, from the agent's cursor.
+    const longAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await db.taskStartDelivery.updateMany({
+      where: { orgId: ORG, agentId: AGENT },
+      data: { deliveredAt: longAgo, lastCallAt: longAgo },
+    });
+    expect(await eventsRead()).toBeGreaterThan(0);
+  });
+
+  it("puts the text prefix test, ANDed with the ltree test on the same path, in each walk not by scope", async () => {
+    const scope = `${ROOT}.sales`;
+    resetWire();
+    await readTaskStartUnchecked(ctx(), scope, "deploy review", "release");
+    const read = wire.sent.find((sent) => sent.text.includes("task_writes AS"));
+    expect(read, "the folded read was not sent").toBeDefined();
+    const sql = read!.text.replace(/\s+/g, " ");
+    // Each walk: its index's own conditions, then `col ^@ $a AND col::ltree <@ $b::ltree` as
+    // plain conjuncts of the WHERE (no OR around them), both bound to the scope read.
+    const walks = {
+      "the task's writes, by (orgId, task, seq)":
+        /"task" = \$\d+ AND "op" = 'create' AND "scopePath" \^@ \$(\d+) AND "scopePath"::ltree <@ \$(\d+)::ltree ORDER BY "seq" DESC/g,
+      "the rules, by (orgId, createdAt)":
+        /WHERE c\."orgId" = \$\d+ AND c\."scopePath" \^@ \$(\d+) AND c\."scopePath"::ltree <@ \$(\d+)::ltree AND c\."supersededById" IS NULL/g,
+      "the recent writes, by (orgId, seq)":
+        /NOT IN \(\$\d+, \$\d+\) AND "scopePath" \^@ \$(\d+) AND "scopePath"::ltree <@ \$(\d+)::ltree ORDER BY "seq" DESC/g,
+    };
+    for (const [walk, shape] of Object.entries(walks)) {
+      const found = [...sql.matchAll(shape)];
+      expect(found.length, walk).toBeGreaterThan(0);
+      for (const [, prefix, tree] of found) {
+        expect([read!.values[Number(prefix) - 1], read!.values[Number(tree) - 1]], walk).toEqual([scope, scope]);
+      }
+    }
   });
 
   it("shows a rule written after one session's block in the next session's block", async () => {

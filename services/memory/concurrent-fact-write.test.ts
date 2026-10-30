@@ -13,6 +13,7 @@
 // the lock this path takes by calling `recordChangeEvent`.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { insertedChangeEvents } from "./change-events.testsupport";
 
 interface ChunkRow {
   id: string;
@@ -84,10 +85,17 @@ vi.mock("@/lib/db", () => {
         },
       ),
     },
-    $queryRaw: vi.fn(async (query: Prisma.Sql | TemplateStringsArray) => {
-      // recordChangeEvent's advisory lock and next-seq statements arrive as tagged
-      // templates; the two queries this feature adds arrive as Prisma.Sql values.
-      if (Array.isArray(query)) return [{ next: BigInt(store.events.length + 1) }];
+    $queryRaw: vi.fn(async (query: Prisma.Sql | TemplateStringsArray, ...bound: unknown[]) => {
+      // recordChangeEvent's one INSERT arrives as a tagged template; the two queries this
+      // feature adds arrive as Prisma.Sql values.
+      const written = insertedChangeEvents(query, bound);
+      if (written) {
+        return written.map((event) => {
+          store.events.push(event as unknown as EventRow);
+          return { id: `event-${store.events.length}`, seq: BigInt(store.events.length) };
+        });
+      }
+      if (Array.isArray(query)) return [];
       const sql = query as Prisma.Sql;
       const values = sql.values as (string | number | null)[];
       if (sql.sql.includes('FROM "memory_chunks" c, stored s')) {

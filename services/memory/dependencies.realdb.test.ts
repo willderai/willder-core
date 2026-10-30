@@ -172,6 +172,52 @@ describe.skipIf(!QA_URL)("the dependency graph's read side, real Postgres", () =
       expect(report.truncated).toBe(false);
     });
 
+    it("lists a brief built while a long transaction was open, when that transaction then changes its source", async () => {
+      // The change event is dated when it is written, not when its transaction began
+      // (services/memory/change-events.ts): dated by the start, it would read as older than the
+      // brief and the brief would never read as stale.
+      const { recordChangeEvent } = await import("./change-events");
+      let briefBuilt: () => void = () => {};
+      const built = new Promise<void>((resolve) => {
+        briefBuilt = resolve;
+      });
+      const change = db.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT 1 AS opened`;
+          await built;
+          await recordChangeEvent(tx, {
+            orgId: ORG,
+            scopePath: ENG,
+            recordType: "fact",
+            recordId: "f-late",
+            op: "update",
+            actorId: "agent-1",
+            actorType: "agent",
+            origin: "mcp",
+            title: "late change",
+          });
+        },
+        { timeout: 30_000 },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await brief("b-late", ENG, new Date());
+      await cite("b-late", "f-late", new Date());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      briefBuilt();
+      await change;
+
+      const report = await deps.staleReport(human(READER), ENG, 10);
+
+      expect(report.stale).toEqual([
+        {
+          recordId: "b-late",
+          sourceId: "f-late",
+          kind: "cites",
+          reason: { kind: "changed", at: expect.any(Date), op: "update" },
+        },
+      ]);
+    });
+
     it("reads one brief citing a fact in several sections as one dependency", async () => {
       await brief("b-many", ENG, at(10));
       for (const section of [0, 1, 2]) await cite("b-many", "f-old", at(10), section);

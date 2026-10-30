@@ -6,6 +6,7 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
 import { createLLMClient, LLM_MODEL_ORCHESTRATOR, LLM_MODEL_EXTRACT } from "@/lib/llm";
+import { extractRequestExtras } from "@/lib/llm-extract-options";
 import { requireAccessContext } from "@/lib/access-context";
 import { guardedMemory } from "@/services/memory";
 import { excerptMarker } from "@/services/memory/query-excerpt";
@@ -224,6 +225,9 @@ async function findAmbiguousEntity(
   groupId: string,
   llm: OpenAI,
 ): Promise<DisambiguationResult | null> {
+  // Read before the best-effort try below: a malformed OPENAI_EXTRACT_EXTRA_BODY fails the
+  // request, naming the variable, instead of silently skipping disambiguation.
+  const extras = extractRequestExtras();
   for (const entityName of entities) {
     let facts: MemoryFact[];
     try {
@@ -256,6 +260,7 @@ async function findAmbiguousEntity(
         response_format: { type: "json_object" },
         max_tokens: 200,
         temperature: 0,
+        ...extras,
       });
       const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}");
       if (parsed.ambiguous === true && Array.isArray(parsed.options) && parsed.options.length >= 2) {

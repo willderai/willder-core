@@ -7,12 +7,69 @@ is not read either: every value comes from the command that started the service
 (app/lab_guard.py).
 """
 
+import json
 import os
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .lab_guard import lab_mode
+
+
+EXTRACT_EXTRA_BODY_ENV = "OPENAI_EXTRACT_EXTRA_BODY"
+
+# Fields OPENAI_EXTRACT_EXTRA_BODY may not set: they decide what an extraction request is, not
+# how it is sampled, or whether the provider keeps it. The same list as RESERVED_EXTRACT_FIELDS
+# in lib/llm-extract-options.ts; lib/llm-extract-options.test.ts checks the two agree.
+RESERVED_EXTRACT_FIELDS = (
+    "model",
+    "messages",
+    "tools",
+    "tool_choice",
+    "functions",
+    "function_call",
+    "response_format",
+    "stream",
+    "stream_options",
+    "n",
+    # Whether the provider retains the request: OpenAI keeps a stored completion with its
+    # prompt, which here is the customer's content.
+    "store",
+    "metadata",
+    "prompt_cache_retention",
+)
+
+
+def _invalid_extract_extra_body(problem: str) -> ValueError:
+    return ValueError(
+        f"{EXTRACT_EXTRA_BODY_ENV} {problem}. Set it to a JSON object of extra request fields, "
+        'e.g. {"reasoning_effort":"none"}, or unset it (docs/self-host.md).'
+    )
+
+
+def _refuse_constant(name: str):
+    raise ValueError(f"{name} is not JSON")
+
+
+def parse_extract_extra_body(raw: str | None) -> dict:
+    """The fields OPENAI_EXTRACT_EXTRA_BODY adds to every extraction request; {} when unset.
+
+    A JSON object only, and none of RESERVED_EXTRACT_FIELDS: anything else raises ValueError
+    naming the variable. Mirrors parseExtractExtraBody in lib/llm-extract-options.ts.
+    """
+    if raw is None or raw.strip() == "":
+        return {}
+    try:
+        # NaN and Infinity are not JSON; Node's JSON.parse refuses them, so this does too.
+        parsed = json.loads(raw, parse_constant=_refuse_constant)
+    except ValueError:
+        raise _invalid_extract_extra_body("is not valid JSON") from None
+    if not isinstance(parsed, dict):
+        raise _invalid_extract_extra_body("must be a JSON object")
+    reserved = [key for key in parsed if key in RESERVED_EXTRACT_FIELDS]
+    if reserved:
+        raise _invalid_extract_extra_body(f"may not set {', '.join(reserved)}")
+    return parsed
 
 
 class Settings(BaseSettings):
@@ -69,6 +126,21 @@ class Settings(BaseSettings):
     @property
     def llm_model_extract(self) -> str:
         return self.openai_model_extract
+
+    # Extra JSON fields merged into every extraction request, e.g. {"reasoning_effort":"none"}
+    # for a local reasoning model that would otherwise think for minutes per call. Unset, the
+    # requests are unchanged. A bad value stops the service at startup, naming the variable.
+    openai_extract_extra_body: str = ""
+
+    @field_validator("openai_extract_extra_body", mode="after")
+    @classmethod
+    def _valid_extract_extra_body(cls, v: str) -> str:
+        parse_extract_extra_body(v)
+        return v
+
+    @property
+    def llm_extract_extra_body(self) -> dict:
+        return parse_extract_extra_body(self.openai_extract_extra_body)
 
     # Embeddings: BGE, run locally on CPU (free, data stays in-service).
     bge_model: str = "BAAI/bge-small-en-v1.5"

@@ -14,6 +14,7 @@ const EMPTY: NavBadges = { "/agents": 0, "/memory": 0 };
 const UNKNOWN: NavBadges = { "/agents": null, "/memory": null };
 const countOrNull = (value: unknown) => (typeof value === "number" ? value : null);
 const POLL_MS = 30_000;
+const TRACKED = ["/agents", "/memory"] as const;
 
 // Track last-visit timestamps per route in localStorage so "new since last visit"
 // badges reset when the user visits the page.
@@ -42,15 +43,18 @@ export function useNavBadges(): NavBadges {
   const pathname = usePathname();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Record visit and clear that page's badge when the user navigates to it
+  // Clear that page's badge when the user navigates to it (adjusted during
+  // render on each pathname change) and record the visit (a side effect, so
+  // it stays in an effect).
+  const visitMatch = TRACKED.find((h) => pathname.startsWith(h));
+  const [clearedFor, setClearedFor] = useState<string | null>(null);
+  if (pathname !== clearedFor) {
+    setClearedFor(pathname);
+    if (visitMatch) setBadges((prev) => ({ ...prev, [visitMatch]: 0 }));
+  }
   useEffect(() => {
-    const tracked = ["/agents", "/memory"] as const;
-    const match = tracked.find((h) => pathname.startsWith(h));
-    if (match) {
-      setLastVisit(match);
-      setBadges((prev) => ({ ...prev, [match]: 0 }));
-    }
-  }, [pathname]);
+    if (visitMatch) setLastVisit(visitMatch);
+  }, [pathname, visitMatch]);
 
   useEffect(() => {
     let cancelled = false;

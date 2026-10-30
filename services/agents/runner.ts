@@ -229,7 +229,7 @@ export function buildMastraAgent(agentRow: AgentRow, extraTools?: Record<string,
     name: agentRow.agentKey,
     instructions: agentRow.systemPrompt ?? defaultPrompt(agentRow.role),
     model,
-    tools: { ...toolset, ...(extraTools ?? {}) } as any,
+    tools: { ...toolset, ...(extraTools ?? {}) } as ConstructorParameters<typeof Agent>[0]["tools"],
   });
 }
 

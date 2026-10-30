@@ -13,6 +13,8 @@
 // returns. Rows are searched exactly; passages through an HNSW index (see retrieve()).
 // A query that quotes stored text also finds the rows holding its words, through a trigram
 // index, and that ranking is fused into the order (services/memory/text-match-fusion.ts).
+// With RETRIEVAL_TEXT_SPANS on, so do the literal spans a query holds: quoted text,
+// identifiers, paths, error codes, numbers (services/memory/text-spans.ts).
 //
 // This store is NOT the access gate — that is GuardedMemoryStore / check(). This
 // is the storage backend; the guard wraps it upstream.
@@ -29,6 +31,19 @@ import { DEFAULT_ACCOUNT_TIER, TIER_LIMITS } from "./account-tiers";
 import { embedTexts, getEmbedding } from "./embedding-service";
 import { interleaveRowAndPassageRanks } from "./passage-ranking";
 import { fuseTextRanking, opensWithPattern, quotedTextPattern } from "./text-match-fusion";
+import {
+  compareSpanHits,
+  extractLiteralSpans,
+  literalSpanPattern,
+  mostSelectiveFirst,
+  probeBudgetMs,
+  SPAN_RANKING_DEPTH,
+  spanHits,
+  spanSimilarityFloor,
+  spanMatchCap,
+  textSpansEnabled,
+  type SpanHit,
+} from "./text-spans";
 import { splitPassages } from "./passages";
 import type {
   IngestInput,
@@ -412,20 +427,137 @@ async function quotedRows(readable: Prisma.Sql, quote: string | null, limit: num
   try {
     const [, found] = await db.$transaction([
       db.$executeRawUnsafe(`SET LOCAL statement_timeout = ${TEXT_LEG_TIMEOUT_MS}`),
-      db.$queryRaw<{ id: string; opens_with_query: boolean }[]>(
-        ...flattenSql(Prisma.sql`
-                SELECT memory_chunks.id, memory_chunks.content ~* ${opensWithPattern(quote)} AS opens_with_query
-                FROM memory_chunks
-                WHERE ${readable} AND memory_chunks.content ~* ${quote}
-                LIMIT ${limit + 1}`),
-      ),
+      db.$queryRaw<QuoteRow[]>(...flattenSql(quoteSql(readable, quote, limit))),
     ]);
-    return found.length > limit ? new Map() : new Map(found.map((r) => [r.id, r.opens_with_query]));
+    return quoteHits(found, limit);
   } catch (e) {
     const code = sqlState(e);
     if (code !== undefined && TEXT_LEG_GIVES_UP.has(code)) return new Map();
     throw e;
   }
+}
+
+type QuoteRow = { id: string; opens_with_query: boolean };
+
+/** The quote's query: the `readable` rows holding `quote`, at most `limit` + 1, each with whether it opens with it. */
+function quoteSql(readable: Prisma.Sql, quote: string, limit: number): Prisma.Sql {
+  return Prisma.sql`
+                SELECT memory_chunks.id, memory_chunks.content ~* ${opensWithPattern(quote)} AS opens_with_query
+                FROM memory_chunks
+                WHERE ${readable} AND memory_chunks.content ~* ${quote}
+                LIMIT ${limit + 1}`;
+}
+
+/** The quote's rows; none when more than `limit` rows hold it. */
+function quoteHits(found: readonly QuoteRow[], limit: number): Map<string, boolean> {
+  return found.length > limit ? new Map() : new Map(found.map((r) => [r.id, r.opens_with_query]));
+}
+
+/**
+ * The text leg with literal spans (RETRIEVAL_TEXT_SPANS): the quote's rows as quotedRows
+ * finds them, and for each span of the query (services/memory/text-spans.ts) the `readable`
+ * rows that hold it, through the same trigram index, each probe stopping at `cap` + 1 rows.
+ *
+ * One transaction, so one pooled connection. TEXT_LEG_TIMEOUT_MS starts once the connection
+ * is held (inside the callback), so a read that waited for the pool still gets its whole
+ * budget. The statements run one after another: the quote first, then the spans, longest
+ * first (mostSelectiveFirst). Each probe runs in a savepoint under its fair share of the
+ * time left (probeBudgetMs), so a span with common trigrams and no match costs at most its
+ * share and the probes after it still run. A probe that gives up (TEXT_LEG_GIVES_UP) is
+ * rolled back to its savepoint and finds nothing. After each probe the timeout is lifted
+ * again, so the savepoint commands and COMMIT never run under a probe's few milliseconds.
+ * A transaction that still gives up or outlives its own timeout keeps what the probes found.
+ * A span more than `cap` rows hold is ignored (spanHits).
+ */
+async function probedTextRows(
+  readable: Prisma.Sql,
+  quote: string | null,
+  limit: number,
+  spans: readonly string[],
+  cap: number,
+): Promise<{ quoted: Map<string, boolean>; spanned: Map<string, SpanHit> }> {
+  let quoted = new Map<string, boolean>();
+  const matches = spans.map(() => [] as string[]);
+  const done = () => ({ quoted, spanned: spanHits(matches, cap) });
+  try {
+    await db.$transaction(
+      async (tx) => {
+        const deadline = Date.now() + TEXT_LEG_TIMEOUT_MS;
+        let remaining = spans.length + (quote === null ? 0 : 1);
+        const probe = async <T>(sql: Prisma.Sql): Promise<T[] | null> => {
+          const budget = probeBudgetMs(deadline - Date.now(), remaining--);
+          if (budget === null) return null;
+          await tx.$executeRawUnsafe("SAVEPOINT text_leg_probe");
+          await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${budget}`);
+          let rows: T[] | null;
+          try {
+            rows = await tx.$queryRaw<T[]>(...flattenSql(sql));
+            await tx.$executeRawUnsafe("RELEASE SAVEPOINT text_leg_probe");
+          } catch (e) {
+            const code = sqlState(e);
+            if (code === undefined || !TEXT_LEG_GIVES_UP.has(code)) throw e;
+            await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT text_leg_probe");
+            rows = null;
+          }
+          await tx.$executeRawUnsafe("SET LOCAL statement_timeout = 0");
+          return rows;
+        };
+        if (quote !== null) quoted = quoteHits((await probe<QuoteRow>(quoteSql(readable, quote, limit))) ?? [], limit);
+        for (const i of mostSelectiveFirst(spans)) {
+          const found = await probe<{ id: string }>(Prisma.sql`
+            SELECT memory_chunks.id FROM memory_chunks
+            WHERE ${readable} AND memory_chunks.content ~* ${literalSpanPattern(spans[i]!)}
+            LIMIT ${cap + 1}`);
+          matches[i] = found?.map((r) => r.id) ?? [];
+        }
+      },
+      { timeout: TEXT_LEG_TIMEOUT_MS * 4 },
+    );
+  } catch (e) {
+    const code = sqlState(e);
+    const expired = e instanceof Prisma.PrismaClientKnownRequestError && e.code === TRANSACTION_EXPIRED;
+    if (!expired && (code === undefined || !TEXT_LEG_GIVES_UP.has(code))) throw e;
+  }
+  return done();
+}
+
+/**
+ * What the text leg found for one row: whether it holds the quote (`opens` set; true when it
+ * opens with it), and the literal spans it holds.
+ */
+interface TextHit {
+  opens?: boolean;
+  span?: SpanHit;
+}
+
+/**
+ * The text leg's rows: the quote's first, then the rows only spans found. With no spans
+ * (RETRIEVAL_TEXT_SPANS off, or a query holding none) this is the quote's rows alone.
+ */
+async function textLegRows(readable: Prisma.Sql, query: string, limit: number): Promise<Map<string, TextHit>> {
+  const spans = textSpansEnabled() ? extractLiteralSpans(query) : [];
+  const { quoted, spanned } =
+    spans.length === 0
+      ? { quoted: await quotedRows(readable, quotedTextPattern(query), limit), spanned: new Map<string, SpanHit>() }
+      : await probedTextRows(readable, quotedTextPattern(query), limit, spans, spanMatchCap(limit));
+  const hits = new Map<string, TextHit>([...quoted].map(([id, opens]) => [id, { opens }]));
+  for (const [id, span] of spanned) hits.set(id, { ...hits.get(id), span });
+  return hits;
+}
+
+/**
+ * A filter for a text ranking already in order: every row the quote found, and the first
+ * SPAN_RANKING_DEPTH rows only spans found.
+ */
+function withinSpanDepth<T>(hitOf: (row: T) => TextHit): (row: T) => boolean {
+  let spanOnly = 0;
+  return (row) => hitOf(row).opens !== undefined || ++spanOnly <= SPAN_RANKING_DEPTH;
+}
+
+/** The text leg's own order between two rows it found: the quote's rows, opening ones first, then by spans held. */
+function compareTextHits(a: TextHit | undefined, b: TextHit | undefined): number {
+  const quoteRank = (h: TextHit | undefined) => (h?.opens === undefined ? 0 : h.opens ? 2 : 1);
+  return quoteRank(b) - quoteRank(a) || compareSpanHits(a?.span, b?.span);
 }
 
 /** What `ingestOnce` found: the row that now holds the content, and whether this
@@ -796,8 +928,8 @@ export class PgvectorMemoryStore implements MemoryStore {
       passage_similarity: number | null;
     };
     let rows: ChunkRow[];
-    // The rows the text leg found in the last search round, each with whether it opens with the quote.
-    let quoted = new Map<string, boolean>();
+    // The rows the text leg found in the last search round, each with what it matched.
+    let quoted = new Map<string, TextHit>();
 
     try {
       // Which rows this read may see (`readableRows`). Every leg below applies all of it
@@ -835,15 +967,16 @@ export class PgvectorMemoryStore implements MemoryStore {
       //    one; a leg that times out leaves the read to the vector legs, never failing it.
       //    The rows it found join the candidates, and their ranking is fused into the order below.
       // `suppressed` names rows an erasure suppresses, found by an earlier round (below).
-      const quote = quotedTextPattern(input.query);
+      //    With RETRIEVAL_TEXT_SPANS on, the leg also probes each literal span of the query
+      //    (services/memory/text-spans.ts) the same way, beside the quote.
       const visibleSql = (suppressed: readonly string[]) =>
         suppressed.length === 0
           ? readable
           : Prisma.sql`${readable} AND memory_chunks.id <> ALL (${suppressed}::text[])`;
-      const askTextLeg = () => quotedRows(readable, quote, limit);
+      const askTextLeg = () => textLegRows(readable, input.query, limit);
       // Asked once; a later round only drops the rows it has since found suppressed.
-      let textLeg: Promise<Map<string, boolean>> | null = null;
-      const textLegRows = async (suppressed: readonly string[]): Promise<Map<string, boolean>> => {
+      let textLeg: Promise<Map<string, TextHit>> | null = null;
+      const unsuppressedTextRows = async (suppressed: readonly string[]): Promise<Map<string, TextHit>> => {
         textLeg ??= askTextLeg();
         const excluded = new Set(suppressed);
         return new Map([...(await textLeg)].filter(([id]) => !excluded.has(id)));
@@ -903,7 +1036,7 @@ export class PgvectorMemoryStore implements MemoryStore {
         ITERATIVE_SCAN_WHEN_AVAILABLE,
       ];
       const search = async (suppressed: readonly string[]) => {
-        quoted = await textLegRows(suppressed);
+        quoted = await unsuppressedTextRows(suppressed);
         return (
           await db.$transaction([
             ...settings.map((statement) => db.$executeRawUnsafe(statement)),
@@ -950,12 +1083,23 @@ export class PgvectorMemoryStore implements MemoryStore {
       rowSimilarity: r.row_similarity,
       passageSimilarity: r.passage_similarity,
     }));
-    // The text leg's own order: rows that open with the quote, then rows that hold it, each
-    // by their own embedding's similarity, then id.
-    const opens = (r: ChunkRow) => Number(quoted.get(r.id) === true);
+    // The text leg's own order: rows that open with the quote, then rows that hold it, then
+    // rows by the literal spans they hold (compareTextHits), each by their own embedding's
+    // similarity, then id; of the rows only spans found, those that clear the similarity
+    // floor of a query mostly in prose (spanSimilarityFloor), then the first SPAN_RANKING_DEPTH.
+    const bestSimilarity = (r: (typeof ranked)[number]) =>
+      Math.max(r.rowSimilarity, r.passageSimilarity ?? r.rowSimilarity);
+    const clearsProseFloor = spanSimilarityFloor(input.query, Math.max(...ranked.map(bestSimilarity)));
     const textRanking = ranked
       .filter((r) => quoted.has(r.id))
-      .sort((a, b) => opens(b) - opens(a) || b.rowSimilarity - a.rowSimilarity || (a.id < b.id ? -1 : 1));
+      .sort(
+        (a, b) =>
+          compareTextHits(quoted.get(a.id), quoted.get(b.id)) ||
+          b.rowSimilarity - a.rowSimilarity ||
+          (a.id < b.id ? -1 : 1),
+      )
+      .filter((r) => quoted.get(r.id)!.opens !== undefined || clearsProseFloor(bestSimilarity(r)))
+      .filter(withinSpanDepth((r) => quoted.get(r.id)!));
     const textMatchRank = new Map(textRanking.map((r, i) => [r, i + 1]));
     return {
       facts: upToCurrentRows(
@@ -975,9 +1119,12 @@ export class PgvectorMemoryStore implements MemoryStore {
 
   /**
    * The text leg alone (services/memory/routing-policy.ts, `readLegs`): the rows this read
-   * may see that hold the text its query quotes, rows opening with it first, then the newest.
-   * No embedding is asked, so it costs one indexed query. A query that quotes nothing reads
-   * nothing. Rows an erasure suppresses are never served; retired versions are left out.
+   * may see that hold the text its query quotes, rows opening with it first, then (with
+   * RETRIEVAL_TEXT_SPANS on) at most SPAN_RANKING_DEPTH rows by the literal spans they hold,
+   * each group newest first, at most `limit` in all. No embedding is asked: the text leg's
+   * indexed queries (one transaction), then one fetch of the rows it found. A query that
+   * quotes nothing and holds no span reads nothing. Rows an erasure suppresses are never
+   * served; retired versions are left out.
    */
   async retrieveText(input: SearchInput): Promise<SearchResult> {
     if (input.skipPgvector) return { facts: [], storesRead: [] };
@@ -986,7 +1133,7 @@ export class PgvectorMemoryStore implements MemoryStore {
     const tenantId = input.tenantId ?? input.groupId;
     try {
       const { readable } = readableRows(input);
-      const quoted = await quotedRows(readable, quotedTextPattern(input.query), limit);
+      const quoted = await textLegRows(readable, input.query, limit);
       if (quoted.size === 0) return { facts: [], storesRead: [read] };
       const rows = await db.$queryRaw<StoredChunkRow[]>(
         ...flattenSql(Prisma.sql`
@@ -997,15 +1144,16 @@ export class PgvectorMemoryStore implements MemoryStore {
           WHERE id = ANY (${[...quoted.keys()]}::text[]) AND ${readable}`),
       );
       const isErased = await loadErasedContentFilter(tenantId);
-      const opens = (r: StoredChunkRow) => Number(quoted.get(r.id) === true);
       const ranked = rows
         .filter((r) => !isErased(r.content, r.created_at, r.entity_name, r.id))
         .sort(
           (a, b) =>
-            opens(b) - opens(a) ||
+            compareTextHits(quoted.get(a.id), quoted.get(b.id)) ||
             (b.created_at?.getTime() ?? 0) - (a.created_at?.getTime() ?? 0) ||
             (a.id < b.id ? -1 : 1),
-        );
+        )
+        .filter(withinSpanDepth((r) => quoted.get(r.id)!))
+        .slice(0, limit);
       return { facts: ranked.map((r, i) => ({ ...storedChunkFact(r), textMatchRank: i + 1 })), storesRead: [read] };
     } catch (e) {
       const code = sqlState(e);

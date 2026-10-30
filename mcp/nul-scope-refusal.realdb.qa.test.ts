@@ -169,7 +169,13 @@ describe.skipIf(!QA_URL)("MCP write tools refuse a NUL in scopePath with one den
         const result = await client.callTool({ name: tool, arguments: { ...args, scopePath } });
 
         expect(result.isError).toBe(true);
-        expect(replyText(result)).toBe(NUL_REFUSAL);
+        // memory_ingest's refusal also says how to write without a scopePath (mcp/tools/memory-ingest.ts);
+        // the deny row's reason is the refusal alone.
+        expect(replyText(result)).toBe(
+          tool === "memory_ingest"
+            ? `${NUL_REFUSAL} If no one gave you that scope, omit scopePath to write to your own scope, the one your token defaults to.`
+            : NUL_REFUSAL,
+        );
         expect(send).not.toHaveBeenCalled();
         expect(await stored(ORG)).toBe(0);
         expect(await auditRows(ORG)).toEqual([

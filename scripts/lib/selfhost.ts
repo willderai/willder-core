@@ -10,6 +10,7 @@
 // the web app. Callers check selfhostTargetRefusal (./local-database-guard.ts) first.
 import { db } from "@/lib/db";
 import type { UserRole } from "@/lib/generated/prisma/enums";
+import { SELFHOST_ORG_KEYS } from "@/lib/selfhost-install";
 import {
   authorizeRecord,
   ensureAccessRoot,
@@ -22,12 +23,15 @@ import {
   type Permission,
 } from "@/services/access";
 
-/** The orgs the self-host scripts may create and act on, by the name a script is given. */
+/**
+ * The orgs the self-host scripts may create and act on, by the name a script is given. Their
+ * keys live in lib/selfhost-install.ts, which also exempts these orgs from hosted plan caps.
+ */
 const SELFHOST_ORGS = {
   /** The org a self-hosted install works in. */
-  default: { key: "self-hosted", name: "Self-hosted" },
+  default: { key: SELFHOST_ORG_KEYS.default, name: "Self-hosted" },
   /** The org `npm run selfhost:smoke` writes its probes to, so they never land in the default one. */
-  smoke: { key: "self-hosted-smoke", name: "Self-host smoke test" },
+  smoke: { key: SELFHOST_ORG_KEYS.smoke, name: "Self-host smoke test" },
 } as const;
 
 export type SelfhostOrgName = keyof typeof SELFHOST_ORGS;

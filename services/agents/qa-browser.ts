@@ -17,6 +17,51 @@ import { resolveAndAssertAllowed, assertHostResolvesPublic } from "./qa-tools";
 // at build time — it's an optional runtime dep, installed only where browser mode runs.
 const PLAYWRIGHT_MODULE = "playwright";
 
+// The slice of Playwright's API this file drives, declared here because the
+// module is resolved only at runtime (above). Structural, so the real objects
+// satisfy it; widen it when a tool starts using more of the API.
+interface PwLocator {
+  first(): PwLocator;
+  nth(index: number): PwLocator;
+  or(other: PwLocator): PwLocator;
+  count(): Promise<number>;
+  click(options?: { timeout?: number }): Promise<void>;
+  fill(value: string, options?: { timeout?: number }): Promise<void>;
+  press(key: string): Promise<void>;
+  innerText(options?: { timeout?: number }): Promise<string>;
+  allInnerTexts(): Promise<string[]>;
+  getAttribute(name: string): Promise<string | null>;
+}
+interface PwPage {
+  goto(
+    url: string,
+    options?: { waitUntil?: "domcontentloaded"; timeout?: number },
+  ): Promise<{ status(): number } | null>;
+  url(): string;
+  title(): Promise<string>;
+  locator(selector: string): PwLocator;
+  getByRole(role: string, options?: { name?: string }): PwLocator;
+  getByText(text: string, options?: { exact?: boolean }): PwLocator;
+  getByLabel(text: string): PwLocator;
+  getByPlaceholder(text: string): PwLocator;
+  waitForLoadState(state: "domcontentloaded", options?: { timeout?: number }): Promise<void>;
+}
+interface PwRoute {
+  request(): { resourceType(): string; url(): string };
+  continue(): Promise<void>;
+  abort(errorCode?: string): Promise<void>;
+}
+interface PwContext {
+  newPage(): Promise<PwPage>;
+  route(url: string, handler: (route: PwRoute) => Promise<void>): Promise<void>;
+  close(): Promise<void>;
+}
+interface PwModule {
+  chromium: {
+    launch(options: { headless: boolean }): Promise<{ newContext(): Promise<PwContext>; close(): Promise<void> }>;
+  };
+}
+
 const MAX_TEXT_CHARS = 12_000;
 const MAX_ELEMENTS = 60;
 
@@ -53,7 +98,7 @@ export async function createBrowserTools(opts: {
       // failure (both paths down) and degrades to API mode.
     }
   }
-  const { chromium } = (await import(PLAYWRIGHT_MODULE)) as any;
+  const { chromium } = (await import(PLAYWRIGHT_MODULE)) as PwModule;
   const browser = await chromium.launch({ headless: true });
   try {
     const context = await browser.newContext();
@@ -62,7 +107,7 @@ export async function createBrowserTools(opts: {
     // Guard EVERY main-frame navigation/redirect — not just the first browser_navigate.
     // Clicks, form submits, and 3xx redirects to an off-allow-list or internal host are
     // aborted here; subresources (css/img/xhr) are left alone so the page still renders.
-    await context.route("**", async (route: any) => {
+    await context.route("**", async (route: PwRoute) => {
       const req = route.request();
       if (req.resourceType() !== "document") return route.continue();
       try {
@@ -191,7 +236,7 @@ export async function createBrowserTools(opts: {
           const locator = c.selector
             ? page.locator(c.selector)
             : c.role
-              ? page.getByRole(c.role as any, c.name ? { name: c.name } : undefined)
+              ? page.getByRole(c.role, c.name ? { name: c.name } : undefined)
               : c.text
                 ? page.getByText(c.text, { exact: false })
                 : null;

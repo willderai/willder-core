@@ -45,6 +45,7 @@ export const READER_OWNED_PATHS = new Set([
   "settings.json",
   "claude_desktop_config.json",
   ".cursor/mcp.json",
+  ".cursor/cli.json",
   ".vscode/mcp.json",
   ".gemini/settings.json",
   ".claude/settings.json",

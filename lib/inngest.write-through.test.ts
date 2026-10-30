@@ -145,7 +145,7 @@ describe("ingestMemory: an agent's write is readable before the job runs", () =>
 
     const ack = await ingestMemory(mcpWrite({ confirmDelivery }));
 
-    expect(ack).toEqual({ readableNow: true, versionId: "chunk_1" });
+    expect(ack).toEqual({ readableNow: true, versionId: "chunk_1", graphExtraction: "earlier" });
     expect(recordFactCreateOnce).not.toHaveBeenCalled();
     expect(db.auditLog.create).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
@@ -287,7 +287,7 @@ describe("a write that skips graph extraction (a session-state capture, mcp/sess
   it("is stored and announced on the request path, and queues no graph job", async () => {
     const ack = await ingestMemory(mcpWrite({ skipGraphExtraction: true }));
 
-    expect(ack).toEqual({ readableNow: true, versionId: "chunk_1" });
+    expect(ack).toEqual({ readableNow: true, versionId: "chunk_1", graphExtraction: "none" });
     expect(recordFactCreateOnce).toHaveBeenCalledTimes(1);
     expect(recordFactCreateOnce).toHaveBeenCalledWith(
       expect.anything(),

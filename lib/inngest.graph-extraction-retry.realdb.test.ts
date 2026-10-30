@@ -180,7 +180,8 @@ describe.skipIf(!QA_URL)("graph extraction that fails after the write is acknowl
 
     const ack = await jobs.ingestMemory({ ...agentWrite("Acme is a Company."), actorType: "extraction" });
 
-    expect(ack).toEqual({ readableNow: false });
+    // Outside a request scope the ingest ran before the call returned, and the ack says how it ended.
+    expect(ack).toEqual({ readableNow: false, graphExtraction: "failed" });
     expect(await owed()).toEqual([]);
     const logged = errors.mock.calls.flat().map(String).join(" ");
     expect(logged).toContain("[memory] ingest failed:");

@@ -238,7 +238,7 @@ export const TOOL_DOCS: ToolDoc[] = [
   },
   {
     name: "memory_ingest",
-    purpose: "Add a note to shared memory.",
+    purpose: "Add a note to your scope's memory.",
     permission: "write",
     fields: [
       { name: "content", required: true, detail: "Nonempty string. The note or observation to store." },

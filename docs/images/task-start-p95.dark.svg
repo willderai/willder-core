@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300" role="img" aria-labelledby="task-start-p95-dark-title task-start-p95-dark-desc" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title id="task-start-p95-dark-title">Time the task-start brief added to a session's first call, p95</title>
+<desc id="task-start-p95-dark-desc">Grouped horizontal bars, milliseconds, before and after the fix, with the 200 ms bar marked. Team scope run 1: 268.6 before, 88.0 after. Team scope run 2: 210.3 before, 66.0 after. Demo scope: 145.8 before, 31.8 after.</desc>
+<rect width="760" height="300" rx="12" fill="#0a2721"/>
+<rect x="274" y="28" width="12" height="12" rx="3" fill="#d4724a"/>
+<text x="292" y="38" font-size="13" fill="#efefe9">Before the fix (29 Oct, early)</text>
+<rect x="520" y="28" width="12" height="12" rx="3" fill="#2fa6ad"/>
+<text x="538" y="38" font-size="13" fill="#efefe9">After the fix (29 Oct)</text>
+<line x1="274" y1="70" x2="274" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="274" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">0</text>
+<line x1="343.7" y1="70" x2="343.7" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="343.7" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">50</text>
+<line x1="413.3" y1="70" x2="413.3" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="413.3" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">100</text>
+<line x1="483" y1="70" x2="483" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="483" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">150</text>
+<line x1="552.7" y1="70" x2="552.7" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="552.7" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">200</text>
+<line x1="622.3" y1="70" x2="622.3" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="622.3" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">250</text>
+<line x1="692" y1="70" x2="692" y2="256" stroke="#2b4a42" stroke-width="1"/>
+<text x="692" y="274" font-size="12" text-anchor="middle" fill="#d4d4cd">300</text>
+<text x="692" y="292" font-size="12" text-anchor="end" fill="#d4d4cd">ms</text>
+<text x="262" y="110.5" font-size="13" text-anchor="end" fill="#efefe9">Team scope, run 1</text>
+<path d="M274 87h370.2a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-370.2z" fill="#d4724a"/>
+<text x="654.2" y="100.5" font-size="12" fill="#efefe9">268.6</text>
+<path d="M274 107h118.6a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-118.6z" fill="#2fa6ad"/>
+<text x="402.6" y="120.5" font-size="12" fill="#efefe9">88.0</text>
+<text x="262" y="170.5" font-size="13" text-anchor="end" fill="#efefe9">Team scope, run 2</text>
+<path d="M274 147h289a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-289z" fill="#d4724a"/>
+<text x="573" y="160.5" font-size="12" fill="#efefe9">210.3</text>
+<path d="M274 167h88a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-88z" fill="#2fa6ad"/>
+<text x="372" y="180.5" font-size="12" fill="#efefe9">66.0</text>
+<text x="262" y="230.5" font-size="13" text-anchor="end" fill="#efefe9">Demo scope</text>
+<path d="M274 207h199.1a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-199.1z" fill="#d4724a"/>
+<text x="483.1" y="220.5" font-size="12" fill="#efefe9">145.8</text>
+<path d="M274 227h40.3a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-40.3z" fill="#2fa6ad"/>
+<text x="324.3" y="240.5" font-size="12" fill="#efefe9">31.8</text>
+<line x1="552.7" y1="66" x2="552.7" y2="256" stroke="#efefe9" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="558.7" y="74" font-size="12" fill="#efefe9">bar: 200 ms</text>
+<line x1="274" y1="70" x2="274" y2="256" stroke="#d4d4cd" stroke-width="1"/>
+</svg>

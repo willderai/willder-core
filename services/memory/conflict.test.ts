@@ -9,6 +9,7 @@
 // for the lock itself, which this path takes by calling `recordChangeEvent`.
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@/lib/generated/prisma/client";
+import { insertedChangeEvents } from "./change-events.testsupport";
 import { CONTENTION_WINDOW_MS, resolveFactContention, supersessionsAmong } from "./conflict";
 
 const ORG = "org-cuid-1";
@@ -46,10 +47,16 @@ function fakeTransaction(rows: ReturnType<typeof version>[], edgesWritten = rows
     events.push(args);
     return { id: `event-${events.length}` };
   });
-  const $queryRaw = vi.fn(async (query: Prisma.Sql | TemplateStringsArray) => {
-    // The advisory lock and next-seq statements recordChangeEvent sends come through
-    // as tagged templates; the contention query comes through as a Prisma.Sql.
-    if (Array.isArray(query)) return [{ next: BigInt(1) }];
+  const $queryRaw = vi.fn(async (query: Prisma.Sql | TemplateStringsArray, ...values: unknown[]) => {
+    // The one INSERT recordChangeEvent sends comes through as a tagged template; the
+    // contention query comes through as a Prisma.Sql.
+    const written = insertedChangeEvents(query, values);
+    if (written) {
+      return written.map((data) => {
+        events.push({ data: data as unknown as Record<string, unknown> });
+        return { id: `event-${events.length}`, seq: BigInt(events.length) };
+      });
+    }
     return rows;
   });
   return {

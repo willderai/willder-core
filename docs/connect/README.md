@@ -39,7 +39,7 @@ local bridge:
 | [Gemini CLI](gemini-cli.md) | header | yes | **unrun** — needs a Google sign-in or `GEMINI_API_KEY` |
 | [Hermes (Nous)](hermes.md) | header | yes | **unrun** — needs a configured model provider |
 | [Claude Desktop](claude-desktop.md) | bridge — its custom connector sends no custom headers | yes | **unrun** — desktop app, needs a recorded run |
-| [Cursor](cursor.md) | header | yes | **unrun** — desktop app, needs a recorded run |
+| [Cursor](cursor.md) | header | yes | **unrun** — desktop app, needs a recorded run against this endpoint ([`cursor-agent` run on a local install](cursor.md#local-self-hosted)) |
 | [Windsurf](windsurf.md) | header | yes | **unrun** — desktop app, needs a recorded run |
 | [Continue](continue.md) | header | yes | **unrun** — IDE extension, needs a recorded run |
 | [VS Code (Copilot)](vscode-copilot.md) | header | yes | **unrun** — IDE extension, needs a recorded run |

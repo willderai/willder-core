@@ -27,7 +27,7 @@ vi.mock("@/lib/db", () => {
   const db = {
     auditLog: { create: vi.fn().mockResolvedValue({ id: "audit_1" }) },
     changeEvent: { create: vi.fn().mockResolvedValue({ id: "change_1" }) },
-    $queryRaw: vi.fn().mockResolvedValue([{ next: BigInt(1) }]),
+    $queryRaw: vi.fn().mockResolvedValue([{ next: BigInt(1), id: "change_1", seq: BigInt(1) }]),
     $transaction: vi.fn(),
   };
   db.$transaction.mockImplementation((fn: (tx: typeof db) => unknown) => fn(db));

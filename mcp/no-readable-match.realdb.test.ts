@@ -663,7 +663,7 @@ describe.skipIf(!QA_URL)(
       expect(await readableMemoryHolds(rows, [value!])).toEqual([false]);
     });
 
-    it("looks each version up in the suppression list's unique index, however small or unanalyzed the list", async () => {
+    it("looks each version up in the suppression list's unique index, one probe per version", async () => {
       const { erasedByVersionDigestSql, versionIdDigestSql } = await import("@/services/memory/erasure-suppression");
       const { Prisma } = await import("@/lib/generated/prisma/client");
       const { flattenSql } = await import("@/services/access/scope-containment");
@@ -677,6 +677,15 @@ describe.skipIf(!QA_URL)(
       );
       await db.$transaction((tx) => recordErasedVersions(tx, ORG, "erasure-request-planned", ids));
       await erasuresCompleted();
+      // Plan against statistics that describe the list as it now stands. Autovacuum analyzes the
+      // list whenever earlier tests' writes cross its threshold, so without this the plan read
+      // whatever size the list had then: statistics taken while it held a few rows put it on one
+      // page, and a probe per version became a Seq Scan of that page, which the planner rightly
+      // prices below an index probe (a local CI run on 2026-10-29, "Seq Scan: "). Reproduced:
+      // stats from 3 rows, then these 300 written, plans a Seq Scan; analyzed at 300, an Index Scan
+      // (cost 8.3 against 11.1 for the scan). The OFFSET 0 is what keeps the lookup per version
+      // whatever the statistics say; the index probe follows once they are current.
+      await db.$executeRaw`ANALYZE erasure_suppressions`;
       const query = Prisma.sql`EXPLAIN (FORMAT JSON) SELECT v.id FROM (
         SELECT memory_chunks.id, memory_chunks."createdAt" AS created_at,
                ${versionIdDigestSql(ORG, Prisma.sql`memory_chunks.id`)} AS version_digest
@@ -684,17 +693,19 @@ describe.skipIf(!QA_URL)(
       ) v WHERE NOT ${erasedByVersionDigestSql(ORG, Prisma.sql`v.version_digest`, Prisma.sql`v.created_at`)}`;
       const [plan] = await db.$queryRaw<{ "QUERY PLAN": unknown }[]>(...flattenSql(query));
       const lookups: string[] = [];
-      const walk = (node: unknown): void => {
-        if (Array.isArray(node)) return node.forEach(walk);
+      // `perVersion`: the node runs inside a SubPlan, once per version, never in a join over the list.
+      const walk = (node: unknown, perVersion: boolean): void => {
+        if (Array.isArray(node)) return node.forEach((n) => walk(n, perVersion));
         if (node === null || typeof node !== "object") return;
         const fields = node as Record<string, unknown>;
+        const inSubPlan = perVersion || fields["Parent Relationship"] === "SubPlan";
         if (fields["Relation Name"] === "erasure_suppressions")
-          lookups.push(`${fields["Node Type"]}: ${fields["Index Cond"] ?? ""}`);
-        Object.values(fields).forEach(walk);
+          lookups.push(`${inSubPlan ? "per version" : "joined"} ${fields["Node Type"]}: ${fields["Index Cond"] ?? ""}`);
+        Object.values(fields).forEach((v) => walk(v, inSubPlan));
       };
-      walk(plan!["QUERY PLAN"]);
+      walk(plan!["QUERY PLAN"], false);
       expect(lookups).toHaveLength(1);
-      expect(lookups[0]).toMatch(/^Index (Only )?Scan: .*digest = v\.version_digest/);
+      expect(lookups[0]).toMatch(/^per version Index (Only )?Scan: .*digest = v\.version_digest/);
     });
 
     it("answers the same for a superseded version as for the version that replaced it alone", async () => {

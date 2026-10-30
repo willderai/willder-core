@@ -64,7 +64,21 @@ export function quotedTextPattern(query: string): string | null {
     .replace(/[\ud800-\udbff]$/u, "");
   const words = quote.split(WORD_BREAK).filter((word) => word !== "");
   if (words.length < MIN_QUOTED_WORDS || words.join("").length < MIN_QUOTED_CHARACTERS) return null;
+  return wordsInOrderPattern(words);
+}
+
+/**
+ * A Postgres regular expression matching `words` in order, each literally, separated by any
+ * run of whitespace: the body of {@link quotedTextPattern}, shared with the literal spans
+ * of services/memory/text-spans.ts.
+ */
+export function wordsInOrderPattern(words: readonly string[]): string {
   return words.map((word) => word.replace(ASCII_PUNCTUATION, "\\$&")).join(PG_WORD_BREAK);
+}
+
+/** Splits `text` into words the way {@link quotedTextPattern} does. */
+export function splitWords(text: string): string[] {
+  return text.split(WORD_BREAK).filter((word) => word !== "");
 }
 
 /**

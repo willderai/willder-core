@@ -773,7 +773,9 @@ function ScopesTab({ query }: { query: string }) {
   }, []);
 
   useEffect(() => {
-    load();
+    void (async () => {
+      await load();
+    })();
   }, [load]);
 
   async function createScope(e: React.FormEvent<HTMLFormElement>) {

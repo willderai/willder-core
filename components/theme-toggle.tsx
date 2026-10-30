@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useIsClient } from "@/hooks/use-is-client";
 
 function SunIcon() {
   return (
@@ -46,9 +46,7 @@ interface ThemeToggleProps {
 
 export function ThemeToggle({ className = "", labelClassName = "", showLabel = false }: ThemeToggleProps) {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
 
   if (!mounted) return <div className="h-[18px] w-[18px] shrink-0" />;
 

@@ -6,47 +6,58 @@
 // error we fall back to the raw source in a <pre> so a malformed diagram is still
 // readable. Mermaid draws with its dark theme, so the frame keeps a dark well in both themes.
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 type Status = "loading" | "ok" | "error";
 
 export function MermaidDiagram({ chart, className }: { chart: string; className?: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<Status>("loading");
+  // The outcome of the current chart's render, or null while it is in flight.
+  // Cleared during render whenever `chart` changes, so a new (or returning)
+  // chart reads as "loading" until its own render settles -- never as a
+  // stale outcome of an earlier render of the same text.
+  const [rendered, setRendered] = useState<{ chart: string; status: "ok" | "error" } | null>(null);
+  const [renderedFor, setRenderedFor] = useState(chart);
+  if (chart !== renderedFor) {
+    setRenderedFor(chart);
+    setRendered(null);
+  }
+  // The last successful SVG, held in state rather than written into the DOM
+  // node, so it survives the container unmounting while the <pre> fallback
+  // shows. Like before, the previous diagram stays under the loading skeleton.
+  const [svg, setSvg] = useState("");
+  const hasSource = !!chart && chart.trim() !== "";
+  const status: Status = !hasSource ? "error" : rendered?.chart === chart ? rendered.status : "loading";
   // useId is stable across renders + unique per instance; strip the colons React uses
   // so the result is a valid DOM/CSS id for mermaid.render.
   const rawId = useId();
   const domId = `mermaid-${rawId.replace(/[^a-zA-Z0-9-_]/g, "")}`;
 
   useEffect(() => {
+    if (!chart || !chart.trim()) return;
     let cancelled = false;
 
     async function render() {
-      setStatus("loading");
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
           startOnLoad: false,
           theme: "dark",
-          securityLevel: "loose",
+          // Chart text is untrusted (agent-written briefs and markdown fences,
+          // org-import diagrams): "strict" keeps click directives inert and
+          // sanitizes labels. "loose" would let `click A "javascript:..."` run.
+          securityLevel: "strict",
         });
-        const { svg } = await mermaid.render(domId, chart);
+        const out = await mermaid.render(domId, chart);
         if (cancelled) return;
-        if (containerRef.current) {
-          containerRef.current.innerHTML = svg;
-        }
-        setStatus("ok");
+        setSvg(out.svg);
+        setRendered({ chart, status: "ok" });
       } catch {
         if (cancelled) return;
-        setStatus("error");
+        setRendered({ chart, status: "error" });
       }
     }
 
-    if (chart && chart.trim()) {
-      void render();
-    } else {
-      setStatus("error");
-    }
+    void render();
 
     return () => {
       cancelled = true;
@@ -75,7 +86,7 @@ export function MermaidDiagram({ chart, className }: { chart: string; className?
       {status === "loading" && (
         <div className="h-24 w-full rounded-lg bg-[#182e29] motion-safe:animate-pulse" aria-hidden />
       )}
-      <div ref={containerRef} aria-hidden={status !== "ok"} />
+      <div aria-hidden={status !== "ok"} dangerouslySetInnerHTML={{ __html: svg }} />
     </div>
   );
 }

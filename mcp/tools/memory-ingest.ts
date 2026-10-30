@@ -22,7 +22,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { AccessDeniedError, check, resolveCallerScopePath } from "@/services/access";
+import { AccessDeniedError, check, normalizeScopePath, resolveCallerScopePath } from "@/services/access";
 import type { IngestAck } from "@/lib/inngest";
 import { CONVENTION_KINDS, recordAuthorizedConvention } from "@/services/memory/conventions";
 import { FACT_ROLES, type FactRole } from "@/services/memory/fact-roles";
@@ -30,6 +30,7 @@ import { ingestKeySchema, ingestRequestHash, withIngestKey } from "@/services/me
 import { parseOccurredAt } from "@/services/memory/occurred-at";
 import { handoffRefusal, isHandoffName } from "@/services/memory/session-handoff";
 import { MAX_DECLARED_SCOPES } from "@/services/access/derived-writes";
+import { invalidCallerScopePath, noCapability } from "@/services/access/deny-reason";
 import { VersionNotStoredError } from "@/services/memory/pgvector-store";
 import { isSessionStateCapture } from "../session-capture";
 import { authorizeDerivedWrite, announceDerivedWrite, type DerivedShare } from "../derived-write";
@@ -40,12 +41,17 @@ import { receivedNow } from "@/services/memory/received-at";
 const memoryIngestInput = {
   content: z.string().min(1).describe("The fact, in plain text."),
   name: z.string().min(1).describe("The entity it is about, e.g. 'Acme Corp' or 'Jane Doe'."),
-  scopePath: z.string().optional().describe("ltree scope to write into; defaults to your token's scope."),
+  scopePath: z
+    .string()
+    .optional()
+    .describe(
+      "Optional; leave it out. Without it the write goes to your token's own scope, which is right for almost every write. Send one only when a person, a tool reply or your instructions gave you a scope path inside your token's scope; do not invent or guess one: a scope your token does not cover is refused.",
+    ),
   kind: z
     .enum(CONVENTION_KINDS)
     .optional()
     .describe(
-      "Record a rule of the scope, served at the start of every session in it: 'convention' (how this org does something) or 'decision' (a choice later work must follow; a proposal until a person confirms it at the link in the reply). Omit for a fact.",
+      "Optional; omit it for a fact or note, which is most writes. Set it only to record a rule of the scope, served at the start of every session in it: 'convention' (how this org does something) or 'decision' (a choice later work must follow; a proposal until a person confirms it at the link in the reply).",
     ),
   supersedes: z
     .string()
@@ -97,7 +103,7 @@ export function registerMemoryIngest(server: McpServer, toolContext: ToolContext
     {
       title: "Write to business memory",
       description:
-        "Store a fact, note or decision in Willder's business memory (needs a token with memory.write). memory_query reads it, and other agents' memory_changes lists it, as soon as the call returns.",
+        "Store a fact, note or decision in Willder's business memory (needs a token with memory.write). memory_query reads it, and other agents' memory_changes lists it, as soon as the call returns. Only content and name are needed; leave the other arguments out unless you need what one describes.",
       inputSchema: memoryIngestInput,
     },
     toolContext.notifying((args: MemoryIngestArgs, extra: unknown) => handleMemoryIngest(toolContext, args, extra)),
@@ -198,8 +204,47 @@ async function handleMemoryIngest(
     }
     return textReply(reply.text);
   } catch (e) {
-    return toolError(e);
+    return toolError(withOwnScopeHint(e, scopePath, cap.agentId));
   }
+}
+
+/**
+ * The sentence a memory_ingest scope refusal ends with: how to write to the token's own scope.
+ * It does not name that scope: a refusal names no registered scope path, the caller's own
+ * included.
+ */
+const OWN_SCOPE_HINT =
+  "If no one gave you that scope, omit scopePath to write to your own scope, the one your token defaults to.";
+
+/**
+ * A refusal of a write to a scopePath the caller chose, with the way to write anyway: leave
+ * scopePath out and the write goes to the token's own scope. A model that invented a scope
+ * path otherwise reads the bare refusal as having no permission at all and gives up (a local
+ * qwen3:14b did on 2026-10-29, inventing one on 5 of its 7 saves).
+ *
+ * Only the two refusals that leaving scopePath out can change get the hint: the token's
+ * capability does not cover the scope (`noCapability`), or the value is not a scope path
+ * (`invalidCallerScopePath`). A whole-token refusal (agent deactivated, org being deleted, a
+ * stale grant, ...) and a call that sent no scopePath are returned as they were. Whether the
+ * scope sent was the token's own makes no difference, so the hint's presence says nothing
+ * about which scope that is. The scope check itself is not touched: this only words the
+ * reply to a write it already refused; the refused target stays in the audit half.
+ */
+function withOwnScopeHint(e: unknown, requested: string | undefined, agentId: string): unknown {
+  if (!(e instanceof AccessDeniedError)) return e;
+  const asked = normalizeScopePath(requested);
+  if (asked === undefined || !scopeRefusal(e.decision.reason, asked, agentId)) return e;
+  const refusal = e.decision.reason.endsWith(".") ? e.decision.reason : `${e.decision.reason}.`;
+  return new AccessDeniedError({
+    ...e.decision,
+    reason: `${refusal} ${OWN_SCOPE_HINT}`,
+  });
+}
+
+/** Whether `reason` refuses the scope a write named, not the token: see withOwnScopeHint. */
+function scopeRefusal(reason: string, asked: string, agentId: string): boolean {
+  if (reason === noCapability("write", agentId, asked).reason) return true;
+  return [false, true].some((dashed) => reason === invalidCallerScopePath(asked, "scopePath", dashed).reason);
 }
 
 const textReply = (text: string) => ({ content: [{ type: "text" as const, text }] });
@@ -451,11 +496,30 @@ function storedDateNote(versionId: string, storedOccurredAt: string | null, stat
  * What the reply says about the stored note: readable now, superseded as it was stored
  * (naming the version reads return instead), or queued. A mocked ingestMemory returns
  * nothing; that reads as the queued case.
+ *
+ * Readable now, it also says where graph extraction stands, and only what is true on this
+ * path (`IngestAck.graphExtraction`). On the hosted server it continues after the reply
+ * (`after()` or the Inngest job). The stdio server has no request scope for `after()`, so its
+ * ingest ran before the reply and the reply says how it ended. A write that skips extraction
+ * says nothing of it, and a write whose text was already stored says so instead.
  */
 function storedReply(ack: IngestAck | undefined, name: string): string {
   if (ack?.supersededBy) {
     return `Stored, but superseded by ${ack.supersededBy}: another writer stored a version of "${name}" in this scope first, inside the conflict window, so memory_query returns that version. Read it with memory_version.`;
   }
-  if (ack?.readableNow) return "Stored and readable now; graph extraction continues in the background.";
-  return "Stored. Queued for ingest — will appear in memory shortly.";
+  if (!ack?.readableNow) return "Stored. Queued for ingest — will appear in memory shortly.";
+  switch (ack.graphExtraction) {
+    case undefined:
+      return "Stored and readable now; graph extraction continues in the background.";
+    case "completed":
+      return "Stored and readable now; graph extraction has completed.";
+    case "kept":
+      return "Stored and readable now; graph extraction failed and will be attempted again.";
+    case "failed":
+      return "Stored and readable now; graph extraction failed, so the fact is not in the graph.";
+    case "none":
+      return "Stored and readable now.";
+    case "earlier":
+      return "Already stored and readable now: an earlier write stored the same text, so nothing was written.";
+  }
 }

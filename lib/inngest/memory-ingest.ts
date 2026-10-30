@@ -3,6 +3,7 @@
 // every writer uses instead of sending the event by hand. The rule this file
 // keeps: a write is acknowledged only once it is readable or durably queued.
 import { createLLMClient, LLM_MODEL_EXTRACT } from "@/lib/llm";
+import { extractRequestExtras } from "@/lib/llm-extract-options";
 import { db } from "@/lib/db";
 import { memory, graphitiStore, pgvectorStore } from "@/services/memory";
 import { VersionNotStoredError, type StoredDates } from "@/services/memory/pgvector-store";
@@ -143,6 +144,9 @@ interface DistillResult {
 
 async function distillFacts(content: string): Promise<DistillResult> {
   const llm = createLLMClient();
+  // Read before the try below: a malformed OPENAI_EXTRACT_EXTRA_BODY fails the extraction,
+  // naming the variable, instead of reading as a reply with nothing in it.
+  const extras = extractRequestExtras();
   try {
     const resp = await llm.chat.completions.create({
       model: LLM_MODEL_EXTRACT,
@@ -188,6 +192,7 @@ async function distillFacts(content: string): Promise<DistillResult> {
       response_format: { type: "json_object" },
       max_tokens: 1500,
       temperature: 0.1,
+      ...extras,
     });
     const raw = resp.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(raw) as {
@@ -313,19 +318,25 @@ async function correctionStands(input: IngestInput, versionId: string): Promise<
   return false;
 }
 
-export async function runMemoryIngest(input: IngestInput): Promise<void> {
+/**
+ * Runs one ingest job inline. Resolves true when its graph steps ran to the end, false when
+ * it returned before them or stopped after them (the source is not connected, the version
+ * was erased or deleted, the write skips graph extraction, or a check after the graph steps
+ * withdrew it); the ack of an awaited request-path ingest says "completed" only for true.
+ */
+export async function runMemoryIngest(input: IngestInput): Promise<boolean> {
   // A connector write with no connection writes nothing (see ingestSourceIsConnected).
   if (!(await ingestSourceIsConnected(input))) {
     await dropReadableRow(input);
-    return;
+    return false;
   }
   // A correction of a version a person erasure removed is part of what was erased.
-  if (await correctsErasedVersion(input)) return;
+  if (await correctsErasedVersion(input)) return false;
   // A fact deleted before its job ran is not written into the graph.
-  if (!(await readableRowExists(input))) return;
+  if (!(await readableRowExists(input))) return false;
   if (input.skipGraphExtraction) {
     await storeWithoutGraph(input);
-    return;
+    return false;
   }
   const shouldResolve = input.resolve !== false && input.actorType === "human";
   const content = shouldResolve
@@ -337,7 +348,7 @@ export async function runMemoryIngest(input: IngestInput): Promise<void> {
   const rowId = await storeBeforeGraph(input, content);
   const job = withReadableRow(input, rowId);
   try {
-    await extractIntoGraph(input, job, content, rowId);
+    return await extractIntoGraph(input, job, content, rowId);
   } catch (e) {
     // The content is stored and readable; only its graph extraction is owed. Name the
     // row, so the request path can keep it for another attempt (services/memory/graph-extraction-retry.ts).
@@ -352,7 +363,7 @@ async function extractIntoGraph(
   job: IngestInput,
   content: string,
   rowId: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const shouldDistill = shouldDistillContent(job, content);
 
   if (shouldDistill) {
@@ -373,12 +384,12 @@ async function extractIntoGraph(
         await storeDerivedRecord({ ...job, content: attributeToSentence(attr) });
       }
       const { episodeId } = await ingestRawContent(job, content);
-      if (!(await sourceWriteStands(job))) return;
-      if (!(await readableRowStands(job))) return;
-      if (!(await correctionStands(job, rowId ?? episodeId))) return;
+      if (!(await sourceWriteStands(job))) return false;
+      if (!(await readableRowStands(job))) return false;
+      if (!(await correctionStands(job, rowId ?? episodeId))) return false;
       if (job.confirmDelivery) await markContactIngestDelivered(job.confirmDelivery);
       if (rowId === null) await recordIngestAppliedOnce(input, episodeId);
-      return;
+      return true;
     }
     console.warn(
       `[memory] distill extracted 0 facts for a ${job.actorType} episode (scope=${job.scopePath ?? "root"}); ingesting raw — Graphiti may not yield graph edges for it`,
@@ -386,11 +397,12 @@ async function extractIntoGraph(
   }
 
   const { episodeId } = await ingestRawContent(job, content);
-  if (!(await sourceWriteStands(job))) return;
-  if (!(await readableRowStands(job))) return;
-  if (!(await correctionStands(job, rowId ?? episodeId))) return;
+  if (!(await sourceWriteStands(job))) return false;
+  if (!(await readableRowStands(job))) return false;
+  if (!(await correctionStands(job, rowId ?? episodeId))) return false;
   if (job.confirmDelivery) await markContactIngestDelivered(job.confirmDelivery);
   if (rowId === null) await recordIngestAppliedOnce(input, episodeId);
+  return true;
 }
 
 // ── Write-through visibility ─────────────────────────────────────────────────
@@ -589,6 +601,39 @@ export interface IngestAck {
    * would have had: nothing was written, so the stored version keeps its own. `occurredAt`
    * is the date its writer stated, or null when it is dated by when it was stored. */
   storedDateKept?: { occurredAt: string | null };
+  /** Where this write's graph extraction stands when the call returns. Absent, it continues
+   * in the background (`after()` or the Inngest job). Present when it does not:
+   *  - `completed`, `kept`, `failed`: it ran before the call returned, under INNGEST_BYPASS
+   *    outside a request (the stdio MCP server, scripts), where `after()` is not available
+   *    and the ingest is awaited. `completed`: the graph steps finished. `kept`: they failed,
+   *    the version is kept in graph_extraction_retries, and the retry job can run here
+   *    (`graphExtractionRetryRuns`). `failed`: they failed and no retry will come: the
+   *    version could not be kept, the failure came before any graph step, or no retry job
+   *    runs on this install (a self-hosted one has no Inngest; a kept row then waits unused).
+   *  - `none`: the write skips graph extraction (`skipGraphExtraction`), or an awaited ingest
+   *    returned without completing its graph steps (`runMemoryIngest` resolved false).
+   *  - `earlier`: nothing was written; an earlier write stored the same text and queued its
+   *    extraction then. */
+  graphExtraction?: GraphExtractionState;
+}
+
+/** Where a write's graph extraction stands when ingestMemory returns (`IngestAck.graphExtraction`). */
+export type GraphExtractionState = InlineGraphExtraction | "earlier";
+
+/** How an awaited request-path ingest ended. */
+export type InlineGraphExtraction = "completed" | "kept" | "failed" | "none";
+
+/**
+ * Whether the graph-extraction retry job (lib/inngest/scheduled-jobs.ts `graphExtractionRetry`,
+ * the only thing that attempts a kept version again) can run on this install: Inngest Cloud
+ * keys are set, or an Inngest dev server is in use. A self-hosted install sets neither. This
+ * reads configuration; it cannot tell whether that server is up.
+ */
+export function graphExtractionRetryRuns(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.INNGEST_SIGNING_KEY?.trim()) return true;
+  // As the Inngest SDK reads it: unset, "0" and "false" mean cloud mode, not a dev server.
+  const dev = env.INNGEST_DEV?.trim().toLowerCase();
+  return Boolean(dev) && dev !== "0" && dev !== "false";
 }
 
 /**
@@ -717,7 +762,12 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
     }
     if (data.confirmDelivery) await markContactIngestDelivered(data.confirmDelivery);
     const kept = storedDateKept(data, writeThrough.existingDates);
-    return { readableNow: true, versionId: writeThrough.episodeId, ...(kept ? { storedDateKept: kept } : {}) };
+    return {
+      readableNow: true,
+      versionId: writeThrough.episodeId,
+      graphExtraction: "earlier",
+      ...(kept ? { storedDateKept: kept } : {}),
+    };
   }
   const stale =
     writeThrough.kind === "stored" &&
@@ -739,20 +789,25 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
   // A stored write that skips graph extraction has nothing left for the job to do.
   if (data.skipGraphExtraction && writeThrough.kind === "stored") {
     if (!sameEpisode) await recordEpisode(data.groupId);
-    return storedAck(writeThrough);
+    return { ...storedAck(writeThrough), graphExtraction: "none" };
   }
 
+  let graphExtraction: InlineGraphExtraction | undefined;
   if (process.env.INNGEST_BYPASS === "1") {
     // Bare fire-and-forget loses the work on serverless: the response returns, the
     // instance freezes, and the ingest never finishes: uploads silently produce
     // nothing in prod. `after()` keeps compute alive past the
     // response. Outside a request scope (scripts, tests) it throws, so fall back.
-    const run = () => runMemoryIngest(input).catch(keepFailedExtraction);
+    const run = (): Promise<InlineGraphExtraction> =>
+      runMemoryIngest(input).then((extracted) => (extracted ? "completed" : "none"), keepFailedExtraction);
     try {
       const { after } = await import("next/server");
       after(run);
     } catch {
-      await run();
+      // Outside a request scope: the stdio MCP server, scripts, tests. The ingest runs now and
+      // the reply says how it ended, since it no longer continues after the reply.
+      const ended = await run();
+      graphExtraction = ended === "kept" && !graphExtractionRetryRuns() ? "failed" : ended;
     }
   } else {
     await inngest.send({ name: MEMORY_INGEST_EVENT, data: input }).catch((e: unknown) => {
@@ -761,8 +816,9 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
   }
 
   await recordEpisode(data.groupId);
-  if (writeThrough.kind !== "stored") return { readableNow: false };
-  return storedAck(writeThrough);
+  const ran = graphExtraction === undefined ? {} : { graphExtraction };
+  if (writeThrough.kind !== "stored") return { readableNow: false, ...ran };
+  return { ...storedAck(writeThrough), ...ran };
 }
 
 /**
@@ -771,16 +827,18 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
  * anything else is only logged, as nothing durable names it. Every line starts
  * "[memory] ingest failed", which the production log check counts.
  */
-async function keepFailedExtraction(error: unknown): Promise<void> {
+async function keepFailedExtraction(error: unknown): Promise<"kept" | "failed"> {
   if (!(error instanceof GraphExtractionError)) {
     console.error("[memory] ingest failed:", error);
-    return;
+    return "failed";
   }
   try {
     await deferGraphExtraction(error);
     console.error(`[memory] ingest failed: ${error.message}; kept for another attempt`);
+    return "kept";
   } catch (recordError) {
     console.error(`[memory] ingest failed: ${error.message}; could not keep it for another attempt:`, recordError);
+    return "failed";
   }
 }
 

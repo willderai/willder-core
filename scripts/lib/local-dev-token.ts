@@ -11,10 +11,14 @@
 // that guard; the CLI in scripts/dev-token.ts checks it before importing this.
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import type { Permission } from "@/lib/generated/prisma/enums";
+import { LOCAL_DEV_ORG_KEY } from "@/lib/selfhost-install";
 import { generateCapabilityToken, hashCapabilityToken, orgRootPath } from "@/services/access";
 
-/** The Clerk org id field of the local org. Clerk ids start with `org_`, so no synced org can take it. */
-export const LOCAL_DEV_ORG_KEY = "local-dev";
+/**
+ * The Clerk org id field of the local org. Clerk ids start with `org_`, so no synced org can take it.
+ * Defined in lib/selfhost-install.ts, which also exempts this org from hosted plan caps.
+ */
+export { LOCAL_DEV_ORG_KEY } from "@/lib/selfhost-install";
 
 export interface LocalDevTokenOptions {
   agentId: string;

@@ -50,6 +50,7 @@ placeholder serves reads; ingest needs a real key). See the memory-service table
 | `OPENAI_BASE_URL` | Same | `lib/llm.ts:10`, `services/agents/runner.ts:33` | `https://api.openai.com/v1`. Groq: `https://api.groq.com/openai/v1`. |
 | `OPENAI_API_VERSION` | Azure OpenAI only | `lib/llm.ts:11` | Unset for every non-Azure endpoint. |
 | `OPENAI_MODEL_EXTRACT` | Extraction model id | `lib/llm.ts:25` | `gpt-4o-mini`. |
+| `OPENAI_EXTRACT_EXTRA_BODY` | Extra JSON fields sent with every request to the extraction model (ingest distillation, coreference, memory-chat disambiguation), e.g. `{"reasoning_effort":"none"}` for a local reasoning model | `lib/llm-extract-options.ts` | Nothing is added. A JSON object only, and it may not set `model`, `messages`, `tools`, `tool_choice`, `functions`, `function_call`, `response_format`, `stream`, `stream_options`, `n`, `store`, `metadata` or `prompt_cache_retention`; any other value stops `npm run mcp` at startup and fails each call to the extraction model (an ingest's distillation, a write's coreference, a memory-chat request) with a line naming the variable. The memory service reads the same variable. |
 | `OPENAI_MODEL_GENERATE` | Generation model id | `lib/llm.ts:26`, `services/agents/runner.ts:29` | `gpt-4o-mini`. |
 | `OPENAI_MODEL_ORCHESTRATOR` | Memory-chat orchestrator model id | `lib/llm.ts:27` | `gpt-4o-mini`. |
 | `ANTHROPIC_API_KEY` | Agents configured with a `claude-*` model | `services/agents/runner.ts:40` | Those agents fail at the model call. |
@@ -139,6 +140,7 @@ Neo4j driver it builds refuses a `NEO4J_URI` that is not this machine
 | `NEO4J_DATABASE` | Feature | Empty = the connection's home database (right for AuraDB). |
 | `OPENAI_API_KEY` | Boot for reads (any non-empty value), real key for ingest | Blank breaks `/search` with a 500; a placeholder serves reads; ingest needs a real key. |
 | `OPENAI_BASE_URL`, `OPENAI_MODEL_EXTRACT`, `OPENAI_API_VERSION` | Feature (extraction) | `https://api.openai.com/v1`, `gpt-4o-mini`, unset. |
+| `OPENAI_EXTRACT_EXTRA_BODY` | Feature (extraction) | Nothing is added to Graphiti's extraction requests. Same rule as the app's: a JSON object that sets none of the request's own fields, or the service does not start. |
 | `BGE_MODEL`, `BGE_DIM` | Feature (embeddings) | `BAAI/bge-small-en-v1.5`, 384. `BGE_DIM` must match the Neo4j vector index. |
 | `BLOB_READ_WRITE_TOKEN` | Feature (private blob downloads for `/extract`) | Private upload URLs answer 403 to the extractor. |
 | `GRAPHITI_TELEMETRY_ENABLED` | Feature (read by `graphiti_core`, not the app) | Unset means true: Graphiti sends anonymous telemetry. `docker-compose.yml` sets `false`. |

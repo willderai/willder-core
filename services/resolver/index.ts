@@ -10,6 +10,7 @@
 // For human actor writes only; agent/extraction content is already structured.
 
 import { createLLMClient, LLM_MODEL_EXTRACT } from "@/lib/llm";
+import { extractRequestExtras } from "@/lib/llm-extract-options";
 import { loadAliasEntities } from "@/services/memory/entity-aliases";
 import { loadStructuredEntities } from "./structured";
 import { loadOrgRoleEntities } from "./org-roles";
@@ -92,6 +93,9 @@ async function llmCoreference(text: string, knownEntities: KnownEntity[], actorN
     .filter(Boolean)
     .join("\n");
 
+  // Read before the best-effort try below: a malformed OPENAI_EXTRACT_EXTRA_BODY fails the
+  // write, naming the variable, instead of silently skipping coreference.
+  const extras = extractRequestExtras();
   try {
     const res = await llm.chat.completions.create({
       model,
@@ -101,6 +105,7 @@ async function llmCoreference(text: string, knownEntities: KnownEntity[], actorN
       ],
       temperature: 0,
       max_tokens: Math.min(text.length * 3, 2048),
+      ...extras,
     });
     // Only a reply the model finished is the text rewritten. One cut short (by the token
     // limit or a content filter) is a fragment of it, and an empty one is none of it:

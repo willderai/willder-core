@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="188" viewBox="0 0 760 188" role="img" aria-labelledby="notice-delivery-light-title notice-delivery-light-desc" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+<title id="notice-delivery-light-title">How long a working note took to reach another agent, six agents at once, p95</title>
+<desc id="notice-delivery-light-desc">Horizontal bars, milliseconds, p95 delivery of working notes and claims to another agent's next tool result with six agents posting at once, 90 samples per run, with the 2,000 ms bar marked. 28 Oct: 1977. 29 Oct, early: 1849. 29 Oct, late: 2079, over the bar.</desc>
+<rect width="760" height="188" rx="12" fill="#e9e7df"/>
+<line x1="274" y1="36" x2="274" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="274" y="162" font-size="12" text-anchor="middle" fill="#34443b">0</text>
+<line x1="343.7" y1="36" x2="343.7" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="343.7" y="162" font-size="12" text-anchor="middle" fill="#34443b">400</text>
+<line x1="413.3" y1="36" x2="413.3" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="413.3" y="162" font-size="12" text-anchor="middle" fill="#34443b">800</text>
+<line x1="483" y1="36" x2="483" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="483" y="162" font-size="12" text-anchor="middle" fill="#34443b">1,200</text>
+<line x1="552.7" y1="36" x2="552.7" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="552.7" y="162" font-size="12" text-anchor="middle" fill="#34443b">1,600</text>
+<line x1="622.3" y1="36" x2="622.3" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="622.3" y="162" font-size="12" text-anchor="middle" fill="#34443b">2,000</text>
+<line x1="692" y1="36" x2="692" y2="144" stroke="#c9c7bd" stroke-width="1"/>
+<text x="692" y="162" font-size="12" text-anchor="middle" fill="#34443b">2,400</text>
+<text x="692" y="180" font-size="12" text-anchor="end" fill="#34443b">ms</text>
+<text x="262" y="63.5" font-size="13" text-anchor="end" fill="#001914">28 Oct</text>
+<path d="M274 49h340.3a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-340.3z" fill="#00879e"/>
+<text x="624.3" y="63.5" font-size="12" fill="#001914">1,977</text>
+<text x="262" y="97.5" font-size="13" text-anchor="end" fill="#001914">29 Oct, early</text>
+<path d="M274 83h318a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-318z" fill="#00879e"/>
+<text x="602" y="97.5" font-size="12" fill="#001914">1,849</text>
+<text x="262" y="131.5" font-size="13" text-anchor="end" fill="#001914">29 Oct, late</text>
+<path d="M274 117h358.1a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-358.1z" fill="#00879e"/>
+<text x="642.1" y="131.5" font-size="12" fill="#001914">2,079</text>
+<line x1="622.3" y1="32" x2="622.3" y2="144" stroke="#001914" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="628.3" y="40" font-size="12" fill="#001914">bar: 2,000 ms</text>
+<line x1="274" y1="36" x2="274" y2="144" stroke="#34443b" stroke-width="1"/>
+</svg>

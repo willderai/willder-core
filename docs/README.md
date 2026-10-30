@@ -18,6 +18,7 @@ the [full path](development.md#full-path-the-web-app-with-memory) for the web ap
 
 ## Concepts
 
+- [architecture.md](architecture.md) — the architecture in one page: components, the single access check, hybrid retrieval, versions and conflicts, deletion and erasure, change notices, audit, self-host topology, measured performance and limits, with diagrams and charts.
 - [willder_memory_hybrid.md](willder_memory_hybrid.md) — the hybrid memory store: Graphiti on Neo4j for the graph, pgvector for semantic chunks, one guarded interface.
 - [consent-deletion-suite.md](consent-deletion-suite.md) — what the consent and deletion suite proves: data served only while connected, erasable per person, gone after disconnect.
 - [export-format.md](export-format.md) — the export file: what a full or scoped export holds, every record type, and how an import into a fresh org checks and loads it.

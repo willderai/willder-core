@@ -65,6 +65,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { db } from "@/lib/db";
 import { sqlUtcNow } from "@/lib/sql-utc-now";
 import { flattenSql, scopeContainsSql, type AccessContext } from "@/services/access";
+import { scopeWithinWalkedSql } from "@/services/access/scope-containment";
 import { FACT_RECORD_TYPE, type ChangeOp } from "./change-events";
 import { CONVENTION_RECORD_TYPE, type ConventionKind } from "./conventions";
 import { supersessionOpening, type StoredWriter } from "./conflict";
@@ -514,6 +515,7 @@ function taskSectionsSql(
   orgId: string,
   taskKey: string,
   within: WithinScope,
+  walked: WithinScope,
   checkDue: ErasureCheckDue,
 ): TaskSectionsSql {
   const roleTier = factRoleTierSql(Prisma.raw('c."role"'));
@@ -525,7 +527,7 @@ function taskSectionsSql(
       WHERE "orgId" = ${orgId}
         AND "task" = ${taskKey}
         AND "op" = 'create'
-        AND ${within('"scopePath"')}
+        AND ${walked('"scopePath"')}
       ORDER BY "seq" DESC
       LIMIT ${MAX_TASK_WRITES}
     ),
@@ -1030,6 +1032,9 @@ export async function readTaskStartUnchecked(
   const checkDue = erasureCheckDueSql(ctx.orgId);
   const within = (column: string) =>
     scopeContainsSql(Prisma.raw(column), scopePath, { relation: "within", mode: "ltree" });
+  // The same test, for the walks of an index that is not by scope: the org's events by seq and
+  // by task, its rules by createdAt. Why, and where not to use it: scopeWithinWalkedSql.
+  const walked = (column: string) => scopeWithinWalkedSql(Prisma.raw(column), scopePath);
 
   // One statement, so the block needs one pooled connection and one round trip. Three
   // queries in parallel take one round trip on a warm pool, but a pool holding fewer
@@ -1097,7 +1102,7 @@ export async function readTaskStartUnchecked(
     FROM "change_events"
     WHERE "orgId" = ${ctx.orgId}
       AND "recordType" NOT IN (${CONVENTION_RECORD_TYPE}, ${WORKING_NOTE_RECORD_TYPE})
-      AND ${within('"scopePath"')}
+      AND ${walked('"scopePath"')}
     ORDER BY "seq" DESC
     LIMIT ${terms.length === 0 ? WRITES_WITHOUT_TASK_TERMS : MAX_CANDIDATE_WRITES}
   `;
@@ -1140,7 +1145,7 @@ export async function readTaskStartUnchecked(
     FROM "conventions" c
     ${writtenBySql(ctx.orgId, CONVENTION_RECORD_TYPE, 'c."id"')}
     WHERE c."orgId" = ${ctx.orgId}
-      AND ${within('c."scopePath"')}
+      AND ${walked('c."scopePath"')}
       AND c."supersededById" IS NULL
       AND c."retiredAt" IS NULL
       AND NOT EXISTS (SELECT 1 FROM "conventions" s WHERE s."supersedesId" = c."id")
@@ -1162,7 +1167,8 @@ export async function readTaskStartUnchecked(
         ) u
         ORDER BY "named" DESC, "createdAt" DESC, "id" COLLATE "C" DESC
         LIMIT ${MAX_CANDIDATE_RULES}`;
-  const taskSections = taskKey === "" ? NO_TASK_SECTIONS : taskSectionsSql(ctx.orgId, taskKey, within, checkDue);
+  const taskSections =
+    taskKey === "" ? NO_TASK_SECTIONS : taskSectionsSql(ctx.orgId, taskKey, within, walked, checkDue);
   const query = Prisma.sql`
     ${taskSections.with}
     SELECT

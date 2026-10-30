@@ -3,6 +3,7 @@
 // we never exceed the org's self-imposed daily limits or email a contact who opted
 // out / was emailed too recently.
 import { db } from "@/lib/db";
+import { isLocalInstallOrg } from "@/lib/selfhost-install";
 
 /** Thrown when a cap or guardrail is violated so routes can map it to a 429 / 409. */
 export class GuardrailError extends Error {
@@ -41,14 +42,18 @@ async function getCaps(orgId: string): Promise<{ maxDraftsPerDay: number; maxSen
 /**
  * Throw if a free-plan org has reached its lifetime memory episode cap. Paid
  * plans (founder/standard) are not gated here — their overage is billed, not
- * blocked. Call before dispatching the ingest so we don't do work we'll discard.
+ * blocked. A self-hosted or local install's org is not gated either: the cap is a
+ * hosted billing limit, and a self-hoster runs their own infrastructure
+ * (lib/selfhost-install.ts, which fails closed to capped on a hosted deployment).
+ * Call before dispatching the ingest so we don't do work we'll discard.
  */
 export async function checkEpisodeCap(orgId: string): Promise<void> {
   const org = await db.org.findUnique({
     where: { id: orgId },
-    select: { plan: true, episodeCount: true, episodeCapIncluded: true },
+    select: { plan: true, episodeCount: true, episodeCapIncluded: true, clerkOrgId: true },
   });
   if (!org || org.plan !== "free") return;
+  if (isLocalInstallOrg(org.clerkOrgId)) return;
   if (org.episodeCount >= org.episodeCapIncluded) {
     throw new GuardrailError(
       "episode_cap_exceeded",

@@ -13,7 +13,7 @@ python-dotenv>=1.2.0         # PYTHON_DOTENV_DISABLED, which app/__init__.py set
 # --- memory engine (Jun 9) ---
 graphiti-core==0.30.2       # pinned: app/graphiti_client.py relies on how Graphiti fills a missing cross-encoder
 sentence-transformers>=3.0   # BGE embeddings, local CPU
-openai==2.41.0               # pinned: app/graphiti_client.py ModelProviderClient overrides the SDK's private _should_retry
+openai==2.41.0               # pinned: app/graphiti_client.py ModelProviderClient overrides the SDK's private _should_retry and _prepare_options
 
 # --- file extraction (Jun 11) ---
 pdfplumber>=0.11             # PDF text extraction (page-by-page)

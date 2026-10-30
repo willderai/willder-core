@@ -101,8 +101,10 @@ describe.skipIf(!QA_URL)("a retried identical ingest on the write-through path",
     const stored = await rows();
     expect(stored).toHaveLength(1);
     // Every reply names the one stored version, the first write and both replays alike.
+    // The replays also say they wrote nothing: the text was stored by an earlier write.
     const ack = { readableNow: true, versionId: stored[0].id };
-    expect(acks).toEqual([ack, ack, ack]);
+    const replay = { ...ack, graphExtraction: "earlier" };
+    expect(acks).toEqual([ack, replay, replay]);
     expect(stored[0]).toMatchObject({ content: acmeRenewal().content, scopePath: SCOPE });
     const announced = await events();
     expect(announced).toHaveLength(1);
@@ -130,10 +132,13 @@ describe.skipIf(!QA_URL)("a retried identical ingest on the write-through path",
     expect(waitingForEmbedding).toHaveLength(2);
     const stored = await rows();
     expect(stored).toHaveLength(1);
-    expect(acks).toEqual([
-      { readableNow: true, versionId: stored[0].id },
-      { readableNow: true, versionId: stored[0].id },
-    ]);
+    // One stored the row; the other found it and says an earlier write stored it.
+    expect(acks).toEqual(
+      expect.arrayContaining([
+        { readableNow: true, versionId: stored[0].id },
+        { readableNow: true, versionId: stored[0].id, graphExtraction: "earlier" },
+      ]),
+    );
     expect(await events()).toHaveLength(1);
     expect(queued).toBe(1);
   });
@@ -177,7 +182,7 @@ describe.skipIf(!QA_URL)("a retried identical ingest on the write-through path",
     commitFirst();
     await firstWriter;
 
-    expect(await second).toEqual({ readableNow: true, versionId: "held-row" });
+    expect(await second).toEqual({ readableNow: true, versionId: "held-row", graphExtraction: "earlier" });
     expect((await rows()).map((row) => row.id)).toEqual(["held-row"]);
     expect(await events()).toHaveLength(0);
     expect(queued).toBe(0);
@@ -234,22 +239,30 @@ describe.skipIf(!QA_URL)("a retried identical ingest on the write-through path",
     const stored = await rows();
     expect(stored).toHaveLength(1);
     expect(stored[0].occurredAt?.toISOString()).toBe("2026-03-01T00:00:00.000Z");
-    expect(sameDate).toEqual(first);
-    expect(otherDate).toEqual({ ...first, storedDateKept: { occurredAt: "2026-03-01T00:00:00.000Z" } });
+    expect(sameDate).toEqual({ ...first, graphExtraction: "earlier" });
+    expect(otherDate).toEqual({
+      ...first,
+      graphExtraction: "earlier",
+      storedDateKept: { occurredAt: "2026-03-01T00:00:00.000Z" },
+    });
   });
 
   it("tells another writer's undated identical write that the stored, stated date stands", async () => {
     const first = await ingestMemory(acmeRenewal({ occurredAt: "2020-01-01T00:00:00.000Z" }));
     const undated = await ingestMemory(acmeRenewal({ actorId: "agent-other" }));
 
-    expect(undated).toEqual({ ...first, storedDateKept: { occurredAt: "2020-01-01T00:00:00.000Z" } });
+    expect(undated).toEqual({
+      ...first,
+      graphExtraction: "earlier",
+      storedDateKept: { occurredAt: "2020-01-01T00:00:00.000Z" },
+    });
   });
 
   it("tells a dated write that the identical text it found is dated by when it was stored", async () => {
     const first = await ingestMemory(acmeRenewal());
     const dated = await ingestMemory(acmeRenewal({ occurredAt: "2020-01-01T00:00:00.000Z" }));
 
-    expect(dated).toEqual({ ...first, storedDateKept: { occurredAt: null } });
+    expect(dated).toEqual({ ...first, graphExtraction: "earlier", storedDateKept: { occurredAt: null } });
   });
 
   it("replays a post-dated write as applied: its clamped date is the date it asked for", async () => {
@@ -259,7 +272,7 @@ describe.skipIf(!QA_URL)("a retried identical ingest on the write-through path",
 
     const [row] = await rows();
     expect(row.occurredAt?.toISOString()).toBe(row.createdAt.toISOString());
-    expect(retry).toEqual(first);
+    expect(retry).toEqual({ ...first, graphExtraction: "earlier" });
   });
 
   it("a retry that differs only by surrounding whitespace is the same fact", async () => {

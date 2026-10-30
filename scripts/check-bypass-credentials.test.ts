@@ -260,7 +260,9 @@ describe("this repository", () => {
   });
 
   it("reads the credentials an SDK reads implicitly, through .env.example", () => {
-    expect(reads.get("INNGEST_SIGNING_KEY")).toEqual([".env.example"]);
+    // INNGEST_EVENT_KEY: INNGEST_SIGNING_KEY is also read by name now
+    // (graphExtractionRetryRuns in lib/inngest/memory-ingest.ts), so it no longer shows the implicit path.
+    expect(reads.get("INNGEST_EVENT_KEY")).toEqual([".env.example"]);
   });
 
   it("reads the memory service's settings from its pydantic class, not only from .env.example", () => {
