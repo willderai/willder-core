@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 vi.mock("next/server", async (original) => ({ ...(await original<object>()), after: vi.fn() }));
@@ -378,7 +379,7 @@ describe.skipIf(!QA_URL)("existence probes: missing and forbidden answer alike (
   afterAll(async () => {
     // Deleting the org removes its rows, audit rows included, through the cascades.
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

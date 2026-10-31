@@ -25,6 +25,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { DriveFile } from "@/services/connectors/gdrive";
 import { ExtractingMemoryService } from "./extracting-memory-service.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -142,7 +143,7 @@ describe.skipIf(!QA_URL)("memory_query names the synced item a connector's fact 
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "Billing" } });
@@ -162,7 +163,7 @@ describe.skipIf(!QA_URL)("memory_query names the synced item a connector's fact 
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

@@ -15,6 +15,7 @@
 // Set QA_DATABASE_URL to an ISOLATED test database. Never a live one.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const IMPORT_TIMEOUT_MS = 60_000;
@@ -42,7 +43,7 @@ describe.skipIf(!QA_URL)(
       await db.grant.deleteMany({ where: { orgId: ORG } });
       await db.scope.deleteMany({ where: { orgId: ORG } });
       await db.user.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
     }
 
     const post = async (body: unknown) => {

@@ -25,6 +25,7 @@ import {
   workflowActorId,
   workflowCapabilityAgentId,
 } from "@/services/access/system-actors";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-reserved-actors";
@@ -66,7 +67,7 @@ describe.skipIf(!QA_URL)("no token or agent grant under an id the product writes
     await db.agent.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeEach(async () => {

@@ -27,6 +27,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { reviewHistory, type ReviewRecord } from "./task-start-review-history.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -83,7 +84,7 @@ describe.skipIf(!QA_URL)("the task-start block serves the deciding review's subs
     await db.memoryChunk.deleteMany({ where: { orgId: ORG } });
     await db.convention.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   /**

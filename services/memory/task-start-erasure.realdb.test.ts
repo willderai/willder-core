@@ -26,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -62,7 +63,7 @@ describe.skipIf(!QA_URL)(
       await db.changeEvent.deleteMany({ where: { orgId: ORG } });
       await db.memoryChunk.deleteMany({ where: { orgId: ORG } });
       await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
     }
 
     beforeAll(async () => {

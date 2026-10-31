@@ -429,6 +429,42 @@ describe("serving what a record says, not how it starts", () => {
       });
       expect(text).toContain(`- create fact v9 by agent-a: [superseded by v10] … ${defect}`);
     });
+
+    it("says the replacement's date in the mark, when the read dated it", () => {
+      const retired = {
+        ...write("w1", review),
+        recordId: "v9",
+        summary: "[superseded by v10 (as of 2026-10-02)] QA: rejected",
+        supersededById: "v10",
+        replacementDatedAt: "2026-10-02T08:00:00.000Z",
+      };
+      const { text } = renderTaskStartBlock({
+        rules: [],
+        writes: [retired],
+        stale: [],
+        weights: weightsOver([review]),
+      });
+      expect(text).toContain(`- create fact v9 by agent-a: [superseded by v10 (as of 2026-10-02)] … ${defect}`);
+      expectWithinBudget(text!);
+    });
+
+    it("marks a write superseded by a version it does not name, with no id and no date", () => {
+      const retired = {
+        ...write("w1", review),
+        recordId: "v9",
+        summary: "[superseded] QA: rejected",
+        supersededById: null,
+        supersededUnnamed: true as const,
+      };
+      const { text } = renderTaskStartBlock({
+        rules: [],
+        writes: [retired],
+        stale: [],
+        weights: weightsOver([review]),
+      });
+      expect(text).toContain(`- create fact v9 by agent-a: [superseded] … ${defect}`);
+      expectWithinBudget(text!);
+    });
   });
 
   describe("the task's own writes, one excerpt each", () => {

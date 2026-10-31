@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -81,7 +82,7 @@ describe.skipIf(!QA_URL)("the run list's search and filters never reach runs the
       for (const t of ["agent", "auditLog", "grant", "scope", "user"] as const) {
         await (db[t] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: org } });
       }
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

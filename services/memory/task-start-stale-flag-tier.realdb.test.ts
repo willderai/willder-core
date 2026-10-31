@@ -13,6 +13,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -34,7 +35,7 @@ describe.skipIf(!QA_URL)("task-start source-moved flags by account tier, against
       await db.factProvenance.deleteMany({ where: { orgId } });
       await db.memoryChunk.deleteMany({ where: { orgId } });
       await db.capability.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

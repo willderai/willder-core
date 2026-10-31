@@ -16,6 +16,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 vi.mock("@/services/access/check", async (importOriginal) => {
@@ -59,7 +60,7 @@ describe.skipIf(!QA_URL)("GET /api/memory/scopes, what a narrow member learns", 
     await db.scope.deleteMany({ where: { orgId: orgs } });
     await db.orgMembership.deleteMany({ where: { orgId: orgs } });
     await db.user.deleteMany({ where: { id: { in: [MEMBER, ADMIN] } } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   };
 
   afterAll(async () => {

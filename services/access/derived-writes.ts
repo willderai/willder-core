@@ -275,7 +275,8 @@ interface DerivedFromEdge {
  * scope" for one it may not. An edge names its scope by the scope row's id, or by the
  * path when the scope had no row; a scope whose row is gone reads as restricted, so a
  * reader cannot tell a hidden scope from a deleted one. Versions with no `derivedFrom`
- * edge are absent from the map.
+ * edge are absent from the map, and so is an edge to a fact version, which is no share
+ * (services/memory/person-rule-copy.ts): read by its `create` event, which outlives the version.
  *
  * `canRead` decides readability without writing an audit row (check.ts `can`); it is
  * passed in so this module never builds the database client at import time.
@@ -293,6 +294,10 @@ export async function derivedFromMarkers(
     FROM "fact_edges" e
     LEFT JOIN "scopes" s ON s."id" = e."toId" AND s."orgId" = e."orgId"
     WHERE e."orgId" = ${ctx.orgId} AND e."kind" = 'derivedFrom' AND e."fromId" IN (${Prisma.join(ids)})
+      AND NOT EXISTS (
+        SELECT 1 FROM "change_events" v
+        WHERE v."orgId" = e."orgId" AND v."recordType" = 'fact' AND v."recordId" = e."toId" AND v."op" = 'create'
+      )
     ORDER BY e."fromId", 2
   `;
   const readable = new Map<string, boolean>();

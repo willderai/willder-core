@@ -22,6 +22,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { StoresOverview } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "stq1";
@@ -77,7 +78,7 @@ describe.skipIf(!QA_URL)("GET /api/memory/stores: scope filter, real Postgres", 
     await db.grant.deleteMany({ where: { orgId: { in: orgs } } });
     await db.scope.deleteMany({ where: { orgId: { in: orgs } } });
     await db.user.deleteMany({ where: { orgId: { in: orgs } } });
-    await db.org.deleteMany({ where: { id: { in: orgs } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: orgs } } });
 
     for (const id of orgs) await db.org.create({ data: { id, name: `QA stores ${id}` } });
     await db.user.create({

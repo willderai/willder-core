@@ -20,6 +20,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { briefCorrectionName } from "@/services/memory/correction-names";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -335,7 +336,7 @@ describe.skipIf(!QA_URL)("a person erasure removes what was written in place of 
       await db.erasureSuppression.deleteMany({ where: { orgId } });
       await db.entityAlias.deleteMany({ where: { orgId } });
       await db.auditLog.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.user.deleteMany({ where: { id: { in: [ADMIN, DEAL_MANAGER, WRITER, OTHER_ADMIN, OTHER_WRITER] } } });
   }

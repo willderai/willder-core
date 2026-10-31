@@ -20,6 +20,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const TOKEN = "github_pat_step_state";
 
@@ -82,13 +83,13 @@ describe.skipIf(!QA_URL)("connector sync step state", () => {
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 
   beforeEach(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.org.create({ data: { id: OTHER_ORG, name: OTHER_ORG } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "pricing" } });

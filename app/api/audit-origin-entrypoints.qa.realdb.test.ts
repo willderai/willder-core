@@ -13,6 +13,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // Leaf module, not the `@/services/access` barrel: the barrel builds the `@/lib/db`
 // singleton at import time, before beforeAll points DATABASE_URL at the QA database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -68,7 +69,7 @@ describe.skipIf(!QA_URL)("each entry point records itself as the audit row's ori
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

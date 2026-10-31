@@ -21,6 +21,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { CHECKED_SCOPE_NOTE_PREFIX, checkedScopeNote } from "./read-notes";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -185,7 +186,7 @@ describe.skipIf(!QA_URL)("memory_query's checked-scope note, against real grants
     const mcp = await startMcpTestServer();
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const orgId of [ORG, OTHER_ORG]) await db.org.create({ data: { id: orgId, name: orgId } });
     for (const [path, name] of Object.entries(NAMES))
       await db.scope.create({ data: { orgId: path.startsWith(OTHER_ROOT) ? OTHER_ORG : ORG, path, name } });
@@ -196,7 +197,7 @@ describe.skipIf(!QA_URL)("memory_query's checked-scope note, against real grants
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

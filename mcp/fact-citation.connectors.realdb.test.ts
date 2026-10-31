@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { SourceType } from "@/lib/generated/prisma/enums";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -49,7 +50,7 @@ describe.skipIf(!QA_URL)("memory_query cites the connector source of a graph fac
 
   async function clear() {
     for (const orgId of [ORG, OTHER_ORG]) await db.source.deleteMany({ where: { orgId } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
   }
 
   async function answer(orgId: string): Promise<string[]> {

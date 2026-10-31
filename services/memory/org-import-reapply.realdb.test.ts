@@ -15,6 +15,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("./store", () => ({
   memory: {},
@@ -120,7 +121,7 @@ describe.skipIf(!QA_URL)("the import's re-apply pass and repeated erasures, real
     await db.contact.deleteMany({ where: { orgId: ORG } });
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await seedMember(db, { orgId: ORG, userId: ADMIN, role: "admin" });
@@ -137,7 +138,7 @@ describe.skipIf(!QA_URL)("the import's re-apply pass and repeated erasures, real
     await db.contact.deleteMany({ where: { orgId: ORG } });
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.$disconnect();
   });

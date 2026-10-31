@@ -19,6 +19,7 @@ import type { AccessContext } from "@/services/access";
 import type { MemoryStore } from "./memory-store";
 import { stubEmbedService } from "./embed-service-stub.testsupport";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("./store", () => ({
   memory: {},
@@ -92,7 +93,7 @@ describe.skipIf(!QA_URL)("QA #741: importing a pre-erasure export does not bring
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ANY(${ORGS})`;
     await db.changeEvent.deleteMany({ where: { orgId: { in: ORGS } } });
     await db.erasureSuppression.deleteMany({ where: { orgId: { in: ORGS } } });
-    await db.org.deleteMany({ where: { id: { in: ORGS } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ORGS } } });
     await db.user.deleteMany({ where: { id: ADMIN } });
   }
 

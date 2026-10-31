@@ -7,6 +7,12 @@ import { resolveCallerScopePath } from "@/services/access";
 import { readChanges, MAX_CHANGES_PER_READ } from "@/services/memory/change-feed";
 import { toolError, type ToolContext } from "./tool-context";
 
+/** ` · <day>` for when a change was recorded, the day in UTC (2026-10-01); nothing when unknown. */
+function recordedDay(at: Date | string | undefined): string {
+  const time = at ? new Date(at).getTime() : Number.NaN;
+  return Number.isNaN(time) ? "" : ` · ${new Date(time).toISOString().slice(0, 10)}`;
+}
+
 export function registerMemoryChanges(server: McpServer, { ctx, cap, taskStartOnly }: ToolContext): void {
   server.registerTool(
     "memory_changes",
@@ -41,7 +47,12 @@ export function registerMemoryChanges(server: McpServer, { ctx, cap, taskStartOn
         // listed never depends on which tool the agent happened to call first.
         const fromOthers = changes.filter((change) => change.actorId !== ctx.actor.id);
         if (!fromOthers.length && !hasMore) return { content: [{ type: "text" as const, text: "No changes." }] };
-        const lines = fromOthers.map((c) => `${c.op} ${c.recordType} ${c.recordId} by ${c.actorId}: ${c.summary}`);
+        // Each change ends with the day it was recorded, in UTC, so a history read off the log
+        // ("when did we switch") has its dates. It goes last: readers find a change by its
+        // opening (`create fact <id> by <actor>:`).
+        const lines = fromOthers.map(
+          (c) => `${c.op} ${c.recordType} ${c.recordId} by ${c.actorId}: ${c.summary}${recordedDay(c.createdAt)}`,
+        );
         if (hasMore) lines.push("(more changes waiting — call again)");
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       } catch (e) {

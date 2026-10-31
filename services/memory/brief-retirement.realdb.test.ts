@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -56,7 +57,7 @@ describe.skipIf(!QA_URL)("retiring a source withdraws the briefs it could have f
         await (db[table] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId } });
       }
     }
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
   }
 
   function brief(id: string, orgId: string, scopePath: string, createdAt = afterSource) {

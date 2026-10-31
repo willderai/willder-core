@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "qa_repeatedNames";
@@ -22,7 +23,7 @@ describe.skipIf(!QA_URL)("the suppression list finds a name however often a text
     db = new PrismaClient({ adapter: new PrismaPg({ connectionString: QA_URL }) });
     const { recordSuppressions, loadErasedContentFilter } = await import("./erasure-suppression");
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await recordSuppressions(db, ORG, "qa", {
       emails: ["orla@example.com"],
@@ -36,7 +37,7 @@ describe.skipIf(!QA_URL)("the suppression list finds a name however often a text
   afterAll(async () => {
     if (QA_URL === undefined) return;
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

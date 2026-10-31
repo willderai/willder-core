@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -81,7 +82,7 @@ describe.skipIf(!QA_URL)("ingestMemory refuses a NUL in content, name or source 
       .spyOn(inngestModule.inngest, "send")
       .mockImplementation((async () => ({ ids: ["job"] })) as never) as never;
     ingestMemory = inngestModule.ingestMemory;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
   }, 60_000);
@@ -89,7 +90,7 @@ describe.skipIf(!QA_URL)("ingestMemory refuses a NUL in content, name or source 
   afterAll(async () => {
     if (QA_URL === undefined) return;
     await db.memoryChunk.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });

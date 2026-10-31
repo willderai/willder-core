@@ -31,6 +31,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import { init } from "@/cli/willder.mjs";
 import { sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -163,7 +164,7 @@ describe.skipIf(!QA_URL)("session-state capture through the willder init hook, a
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, WEB]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
     tokens.a = await mint("agent-a", "write");
@@ -187,7 +188,7 @@ describe.skipIf(!QA_URL)("session-state capture through the willder init hook, a
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     rmSync(projectDir, { recursive: true, force: true });
     rmSync(stateTmp, { recursive: true, force: true });

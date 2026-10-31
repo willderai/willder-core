@@ -37,6 +37,7 @@ vi.mock("@/services/connectors/source-readers", () => ({
 }));
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const FULL_TOKEN = "github_pat_full";
 const NARROW_TOKEN = "github_pat_contents_only";
@@ -173,7 +174,7 @@ describe.skipIf(!QA_URL)("QA: wider-token content after a narrower reconnect", (
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -181,7 +182,7 @@ describe.skipIf(!QA_URL)("QA: wider-token content after a narrower reconnect", (
     graphiti.reset();
     sent.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "scratch" } });
   });

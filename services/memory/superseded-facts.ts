@@ -35,6 +35,7 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { normalizeFactText } from "./fact-text";
 import { toGid } from "./graphiti-store";
 import { FACT_RECORD_TYPE } from "./change-events";
+import { versionsReadingAsErased } from "./versions";
 import type { RetrievalBackend } from "@/types/memory";
 
 /**
@@ -195,7 +196,8 @@ export function dropSupersededFacts<T extends FactLike>(
  * versions stored in one scope: a fact contends only with versions in its own scope
  * (services/memory/conflict.ts), and a correction or an upstream edit is recorded only
  * when its replacement is in the replaced version's scope (services/memory/edges.ts). So
- * the winner is always as readable as the loser.
+ * the winner is always as readable as the loser. A winner that reads as erased is still
+ * returned; a caller serving the id leaves it out first ({@link withoutErasedWinners}).
  */
 export async function supersedingVersions(orgId: string, versionIds: readonly string[]): Promise<Map<string, string>> {
   const winners = new Map<string, string>();
@@ -231,29 +233,89 @@ function announcesFactVersion(event: FactWriteEvent): boolean {
  * change log can keep listing that write as history without presenting its text as the
  * fact's current value. Each marked event gets `supersededById` and a summary that starts
  * with the same statement in words; every other event gets `supersededById: null` and is
- * otherwise returned as it was. One query, and none when no event announces a fact write.
+ * otherwise returned as it was. A replacement that reads as erased
+ * (services/memory/versions.ts versionsReadingAsErased) is not named, as memory_version does
+ * not name it: the write is still marked, `[superseded]`, with `supersededUnnamed` and no id.
+ * One query for the record, one erasure check when it names a replacement, and none when no
+ * event announces a fact write.
  */
 export async function markSupersededWrites<T extends FactWriteEvent & { summary: string }>(
   orgId: string,
   events: readonly T[],
-): Promise<(T & { supersededById: string | null })[]> {
+): Promise<(T & SupersededMarking)[]> {
   const ids = events.filter(announcesFactVersion).map((event) => event.recordId);
-  return markWritesAgainst(events, await supersedingVersions(orgId, ids));
+  return markWritesAgainst(events, await withoutErasedWinners(orgId, await supersedingVersions(orgId, ids)));
+}
+
+/**
+ * `winners` with each replacement that reads as erased replaced by null: the version is still
+ * superseded, by a version no reader is told of. Reads nothing when `winners` is empty.
+ */
+export async function withoutErasedWinners(
+  orgId: string,
+  winners: ReadonlyMap<string, string | null>,
+): Promise<Map<string, string | null>> {
+  const named = [...new Set([...winners.values()].filter((id): id is string => id !== null))];
+  const gone = named.length ? await versionsReadingAsErased(orgId, named) : new Set<string>();
+  return new Map([...winners].map(([loser, winner]) => [loser, winner !== null && gone.has(winner) ? null : winner]));
+}
+
+/** What marking adds to an event: the replacement, when one is named, and when it took over. */
+export interface SupersededMarking {
+  /** The version that superseded the write's version; null when none did, or when it reads as erased. */
+  supersededById: string | null;
+  /** Set when the write's version was superseded by a version that reads as erased, which is not named. */
+  supersededUnnamed?: true;
+  /** With `replacementDatedAt`: the date the replacement is served with, as an ISO instant; null when not known. */
+  replacementDatedAt?: string | null;
 }
 
 /**
  * `markSupersededWrites` for a caller that already read the record: `winners` maps a
  * retired version's id to the version that retired it, as `supersedingVersions` returns
- * it. Lets a reader fetch the record in the same statement as the events themselves
- * (services/memory/task-start.ts) and still mark them exactly as the change feed does.
+ * it, or to null when that version reads as erased ({@link withoutErasedWinners}). Lets a
+ * reader fetch the record in the same statement as the events themselves
+ * (services/memory/task-start.ts) and still mark them exactly as the change feed does. Given
+ * `replacementDatedAt` (by retired version, the date its replacement is served with), the mark
+ * also says that date ({@link supersededMark}); the change feed's summaries stay undated, since
+ * memory_changes dates each line itself.
  */
 export function markWritesAgainst<T extends FactWriteEvent & { summary: string }>(
   events: readonly T[],
-  winners: ReadonlyMap<string, string>,
-): (T & { supersededById: string | null })[] {
+  winners: ReadonlyMap<string, string | null>,
+  replacementDatedAt?: ReadonlyMap<string, string>,
+): (T & SupersededMarking)[] {
   return events.map((event) => {
     const winnerId = announcesFactVersion(event) ? winners.get(event.recordId) : undefined;
     if (winnerId === undefined) return { ...event, supersededById: null };
-    return { ...event, supersededById: winnerId, summary: `[superseded by ${winnerId}] ${event.summary}` };
+    if (winnerId === null)
+      return {
+        ...event,
+        supersededById: null,
+        supersededUnnamed: true as const,
+        summary: `${supersededMark(null)} ${event.summary}`,
+      };
+    const at = replacementDatedAt?.get(event.recordId) ?? null;
+    return {
+      ...event,
+      supersededById: winnerId,
+      ...(replacementDatedAt ? { replacementDatedAt: at } : {}),
+      summary: `${supersededMark(winnerId, at)} ${event.summary}`,
+    };
   });
+}
+
+/**
+ * The mark a write of a since-superseded version carries: `[superseded by <id>]`, and with the
+ * date its replacement is served with, the day in UTC, `[superseded by <id> (as of 2026-10-01)]`:
+ * the date belongs to the replacement, as on memory_version's `superseded by:` line, so history
+ * imported out of order never reads as replaced before it was written. `[superseded]` when the
+ * replacement is not named. An instant that does not parse is left off, never guessed.
+ */
+export function supersededMark(winnerId: string | null, at?: string | null): string {
+  if (winnerId === null) return "[superseded]";
+  const time = at ? Date.parse(at) : Number.NaN;
+  return Number.isNaN(time)
+    ? `[superseded by ${winnerId}]`
+    : `[superseded by ${winnerId} (as of ${new Date(time).toISOString().slice(0, 10)})]`;
 }

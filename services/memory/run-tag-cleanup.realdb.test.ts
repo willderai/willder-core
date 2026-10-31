@@ -29,6 +29,7 @@ import {
 import { type McpCall, SecretVault, adminApiWith, mcpCallWith, mintToken } from "@/tests/support/live-api";
 import type { AccessContext } from "@/services/access";
 import type { DemoTarget, RunTagInventory } from "./run-tag-cleanup";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
@@ -117,7 +118,7 @@ describe.skipIf(!QA_URL)("cleaning a killed measure run out of the demo scope by
       await db.grant.deleteMany({ where: { orgId: org } });
       await db.scope.deleteMany({ where: { orgId: org } });
       await db.user.deleteMany({ where: { orgId: org } });
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

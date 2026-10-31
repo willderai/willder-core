@@ -21,6 +21,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { toGid } from "@/services/memory/graphiti-store";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -145,7 +146,7 @@ describe.skipIf(!QA_URL)("admin removal of out-of-service records, real Postgres
     }
     // Deleting the org removes its audit rows through the one cascade the append-only
     // trigger allows.
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
     await db.$disconnect();
   });
 

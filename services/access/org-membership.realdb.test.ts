@@ -16,6 +16,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { Client } from "pg";
 import { Webhook } from "svix";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -210,7 +211,7 @@ describe.skipIf(!QA_URL)("per-org membership decides access in each org, real Po
     await db.scope.deleteMany({ where: { orgId: ORGS } });
     await db.user.deleteMany({ where: { OR: [{ orgId: ORGS }, { clerkId: { startsWith: "clerk_user_qa_om_" } }] } });
     await db.agent.deleteMany({ where: { orgId: ORGS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
   }
 
   beforeAll(async () => {

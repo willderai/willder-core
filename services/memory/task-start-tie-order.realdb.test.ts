@@ -19,6 +19,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -59,7 +60,7 @@ describe.skipIf(!QA_URL)("the task-start read's tie order, against a real databa
     await db.memoryChunk.deleteMany({ where: { orgId: ORG } });
     await db.convention.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   async function reader(): Promise<AccessContext> {

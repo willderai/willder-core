@@ -119,6 +119,21 @@ export interface MemoryFact {
    * when an agent wrote it, or labelled by its writer when `byPerson` (services/memory/rule-copies.ts).
    */
   contradicts?: { ruleId: string; kind: "convention" | "decision"; byPerson?: true };
+  /**
+   * Set on the first fact served on a subject with a person's rule in force and no copy of it on
+   * the page: each such rule, as a read may serve it (services/memory/rule-copies.ts).
+   */
+  standingRules?: StandingRule[];
+}
+
+/** A person's rule in force, as a read names it when no copy of it is on the page. */
+export interface StandingRule {
+  ruleId: string;
+  kind: "convention" | "decision";
+  /** The rule's text as a served line may carry it, within the page's budget; empty when none is left. */
+  text: string;
+  /** Set when `text` is not the whole rule. */
+  cut?: true;
 }
 
 /** How the rule a fact copies stands, by the task-start block's rule (services/memory/claim-status.ts). */

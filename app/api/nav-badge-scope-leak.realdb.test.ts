@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // Every number the nav badge returns counts only records the caller may read.
 //
@@ -159,7 +160,7 @@ describe.skipIf(!QA_URL)("security-nav-badge-org-wide-count-20261005: GET /api/n
     for (const table of ["audit_log", "grants", "memory_chunks", "agent_runs", "agents", "contacts", "scopes"]) {
       await db.$executeRawUnsafe(`DELETE FROM "${table}" WHERE "orgId" = $1`, ORG);
     }
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db?.$disconnect?.();
   });
 

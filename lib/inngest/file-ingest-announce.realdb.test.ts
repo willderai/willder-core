@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** When set, the change feed's writer refuses a document event. */
 const fault = vi.hoisted(() => ({ refuseDocumentEvent: false }));
@@ -67,7 +68,7 @@ describe.skipIf(!QA_URL)("an inline upload's passages and its document event com
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
     ({ storeFilePassages } = await import("./file-ingest"));
     await wipe();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
   });
 
@@ -80,7 +81,7 @@ describe.skipIf(!QA_URL)("an inline upload's passages and its document event com
     vi.unstubAllGlobals();
     if (QA_URL === undefined) return;
     await wipe();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

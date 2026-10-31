@@ -35,6 +35,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -141,7 +142,7 @@ describe.skipIf(!QA_URL)("an MCP client retrying timed-out memory_ingest calls w
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
   });
 
@@ -149,7 +150,7 @@ describe.skipIf(!QA_URL)("an MCP client retrying timed-out memory_ingest calls w
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await new Promise((resolve) => embedding?.close(resolve));
-    await db?.org.deleteMany({ where: { id: ORG } });
+    if (db) await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db?.$disconnect();
   });
 

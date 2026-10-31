@@ -18,6 +18,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The graph leg's entities: entity id to the fact names whose stored rows it serves. */
 const graphEntities = vi.hoisted(() => new Map<string, string[]>());
@@ -143,7 +144,7 @@ describe.skipIf(!QA_URL)("a stale write-back is caught whichever tool the writer
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -151,7 +152,7 @@ describe.skipIf(!QA_URL)("a stale write-back is caught whichever tool the writer
     vi.mocked(globalThis.fetch)
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

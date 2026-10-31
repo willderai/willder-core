@@ -22,6 +22,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { stubEmbedService } from "./embed-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: {
@@ -104,13 +105,13 @@ describe.skipIf(!QA_URL)("an excerpt served by memory_query is a sighting, not a
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
   beforeEach(async () => {
     stubEmbedService(() => new Array(DIMENSIONS).fill(0.01));
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     // The team tier's 6,000-token page, so LONG_UPDATE (~95k characters) is served as an excerpt.
     await db.org.create({ data: { id: ORG, name: ORG, settings: { accountTier: "team" } } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });

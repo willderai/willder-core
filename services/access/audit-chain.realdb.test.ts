@@ -13,6 +13,7 @@ import { Pool, type PoolClient } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { AUDIT_CHAIN_GENESIS_HASH, auditRowHash, verifyAuditChain } from "./audit-chain";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const PREFIX = "achain-";
@@ -79,7 +80,7 @@ describe.skipIf(!QA_URL)("audit log append-only and hash chain, real Postgres", 
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: { startsWith: PREFIX } } });
+    await deleteOrgsWithRetry(db, { where: { id: { startsWith: PREFIX } } });
     await pool.query(`DROP OWNED BY ${APP_ROLE}`);
     await pool.query(`DROP ROLE ${APP_ROLE}`);
     await pool.end();

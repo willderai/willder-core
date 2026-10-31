@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "mlist";
@@ -76,7 +77,7 @@ describe.skipIf(!QA_URL)("the members list holds only live members of the caller
     for (const org of [ORG, OTHER_ORG]) {
       await db.orgMembership.deleteMany({ where: { orgId: org } });
       await db.user.deleteMany({ where: { orgId: org } });
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

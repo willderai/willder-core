@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // send_feedback against a real Postgres: the hourly limit
 // counts one agent in one org, so a second org whose agent has the same id and a
@@ -72,7 +73,7 @@ describe.skipIf(!QA_URL)("send_feedback against real Postgres", () => {
 
   afterAll(async () => {
     await db.capability.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await db.$disconnect();
   });
 

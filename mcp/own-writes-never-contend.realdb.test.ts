@@ -25,6 +25,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -147,7 +148,7 @@ describe.skipIf(!QA_URL)("a writer's own writes never compete with each other", 
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     for (const [name, path] of Object.entries(SCOPES)) await db.scope.create({ data: { orgId: ORG, path, name } });
@@ -157,7 +158,7 @@ describe.skipIf(!QA_URL)("a writer's own writes never compete with each other", 
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

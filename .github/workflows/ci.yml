@@ -147,7 +147,10 @@ jobs:
     name: test shard ${{ matrix.shard }}/4
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A shard took 14.6 minutes on October 29. On October 30 two were cut off at 15 with
+    # every test so far passing, one with about 80 of its roughly 350 files unrun. A
+    # cut-off shard writes no report, so the whole-suite check cannot pass either.
+    timeout-minutes: 25
     strategy:
       # Every shard reports, so one failure does not hide another.
       fail-fast: false
@@ -195,7 +198,12 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
+      # The whole history, not checkout's default single commit: deploy-identity.test.ts
+      # reads files from the commits KNOWN_MIGRATION_EDITS records, and those commits and
+      # their parents reach back to June. Any shard can get that file.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -297,10 +305,9 @@ jobs:
         id: setup-python
         with:
           python-version: "3.13"
-      # Not memory-service-tests' virtualenv: that one carries the default CUDA build
-      # of torch, several GB, and restoring it beside the Neo4j and Postgres containers
-      # killed the runner twice. This one installs the CPU-only wheel first, as
-      # memory-service/Dockerfile does (about 1.5 GB in all), under its own key.
+      # The CPU-only wheel first, as memory-service/Dockerfile does (about 1.5 GB in all).
+      # The default CUDA build of torch is several GB: restoring it beside the Neo4j and
+      # Postgres containers killed the runner twice. memory-service-tests shares this key.
       - name: Restore virtualenv (CPU torch)
         id: venv
         uses: actions/cache@v4
@@ -461,16 +468,20 @@ jobs:
       # to the toolcache path of the exact patch release that built it, so a cache built
       # on 3.13.15 and restored after setup-python moves to 3.13.16 has a dangling
       # .venv/bin/python and pytest exits 127 on a PR that changed nothing.
-      - name: Restore virtualenv
+      # The CPU-only wheel goes first, and the key is graph-delete-realdb's, for the same
+      # reason as there: on its own, sentence-transformers pulls the CUDA build of torch,
+      # whose install ended this job with "No space left on device".
+      - name: Restore virtualenv (CPU torch)
         id: venv
         uses: actions/cache@v4
         with:
           path: memory-service/.venv
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('memory-service/requirements*.txt') }}
+          key: venv-cpu-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('memory-service/requirements*.txt') }}
       - if: steps.venv.outputs.cache-hit != 'true'
         run: |
           python -m venv .venv
           .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
           .venv/bin/pip install -r requirements-dev.txt
       - name: Python unit tests
         run: .venv/bin/python -m pytest

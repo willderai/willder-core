@@ -11,6 +11,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -28,7 +29,7 @@ describe.skipIf(!QA_URL)("PgvectorMemoryStore.isStored is bound to the row's org
 
   async function wipe() {
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" IN (${ORG}, ${OTHER_ORG})`;
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
   }
 
   async function insertRow(id: string, orgId: string, scopePath: string | null) {

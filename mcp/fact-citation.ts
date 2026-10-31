@@ -24,20 +24,13 @@
 // with a citation, an item or a version this file did not print.
 import { db } from "@/lib/db";
 import { excerptMarker } from "@/services/memory/query-excerpt";
+import { inlineText } from "@/services/memory/inline-text";
 import { ruleLabelOf } from "@/services/memory/rule-copies";
 import { readVersionStamps, type VersionStamp, type VersionWriter } from "@/services/memory/versions";
 import type { MemoryFact } from "@/types/memory";
 
 /** Printed after a fact that carries neither a source nor an actor, so absence is visible. */
 const UNCITED = "uncited";
-
-/**
- * Stored text as it may appear on a bullet: on one line, with the separators the line's
- * own citation, item and version use (" — " and " · ") replaced by " – " and " - ".
- */
-function inlineText(text: string): string {
-  return text.replace(/\s+/g, " ").trim().replaceAll(" — ", " – ").replaceAll(" · ", " - ");
-}
 
 /** The name a fact's source is cited by, when it is a source of the caller's org. */
 function citedSource(fact: MemoryFact, sourceNames: Map<string, string>): string | null {
@@ -78,6 +71,24 @@ function servedDate(fact: MemoryFact, stamps: Map<string, VersionStamp>): string
   });
   if (dates.length === 0) return fact.validAt;
   return dates.reduce((newest, date) => (Date.parse(date) > Date.parse(newest) ? date : newest));
+}
+
+/**
+ * The day each fact is served with, in UTC (2026-10-01), in the order given, or null when it has
+ * no date: {@link servedDate}, for a reader that lists facts without citing them (memory_entity).
+ * A fact from the graph's entity view names no store; any fact carrying the versions it was
+ * derived from is dated by the newest of them, as a graph fact on memory_query is.
+ */
+export async function servedDays(orgId: string, facts: readonly MemoryFact[]): Promise<(string | null)[]> {
+  const derived = facts.map((f) =>
+    f.store === "semantic" || !f.chunkIds?.length ? f : { ...f, store: "graph" as const },
+  );
+  const stamps = await readVersionStamps(orgId, graphFactVersions(derived));
+  return derived.map((f) => {
+    const date = servedDate(f, stamps);
+    const time = date ? Date.parse(date) : Number.NaN;
+    return Number.isNaN(time) ? null : new Date(time).toISOString().slice(0, 10);
+  });
 }
 
 /**

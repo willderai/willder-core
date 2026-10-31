@@ -20,6 +20,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-qa-overrev";
@@ -84,7 +85,7 @@ describe.skipIf(!QA_URL)("agent cascade does not over-revoke across independent 
     await db.grant.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.scope.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.user.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
 
     await db.org.create({ data: { id: ORG, name: "QA overrev" } });
     await db.user.create({
@@ -115,7 +116,7 @@ describe.skipIf(!QA_URL)("agent cascade does not over-revoke across independent 
     await db.grant.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.scope.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.user.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

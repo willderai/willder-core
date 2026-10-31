@@ -1,7 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// Only the product (after-login) routes are gated. The marketing landing,
-// sign-in, and sign-up stay public.
+// Only the product (after-login) routes are gated: every route under app/(app). The
+// marketing landing, sign-in, and sign-up stay public.
 const isProtectedRoute = createRouteMatcher([
   "/dashboard(.*)",
   "/memory(.*)",
@@ -11,6 +11,8 @@ const isProtectedRoute = createRouteMatcher([
   "/billing(.*)",
   "/integrations(.*)",
   "/settings(.*)",
+  "/how-to-use(.*)",
+  "/briefs(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

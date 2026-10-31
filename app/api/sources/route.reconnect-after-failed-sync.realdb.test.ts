@@ -29,6 +29,7 @@ vi.mock("@/services/connectors/source-readers", () => ({
 }));
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const BAD_TOKEN = "github_pat_revoked";
 const GOOD_TOKEN = "github_pat_working";
@@ -131,7 +132,7 @@ describe.skipIf(!QA_URL)("reconnecting a source whose last sync failed on its cr
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -139,7 +140,7 @@ describe.skipIf(!QA_URL)("reconnecting a source whose last sync failed on its cr
     graphiti.reset();
     sent.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "pricing" } });
   });

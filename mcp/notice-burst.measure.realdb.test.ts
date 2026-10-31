@@ -29,6 +29,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -153,7 +154,7 @@ it.skipIf(!QA_URL || !process.env.MEASURE_NOTICE_BURST)(
     }
 
     try {
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.org.create({ data: { id: ORG, name: ORG } });
       const results: Record<string, { changes: number; calls: number; noticeTokens: number }> = {};
       for (const [label, scopePath, write] of [
@@ -185,7 +186,7 @@ it.skipIf(!QA_URL || !process.env.MEASURE_NOTICE_BURST)(
       process.stdout.write(`notice-burst ${JSON.stringify(results)}\n`);
     } finally {
       await db.memoryChunk.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await memoryService.stop();
       await db.$disconnect();
     }

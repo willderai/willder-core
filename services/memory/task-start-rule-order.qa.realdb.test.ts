@@ -17,6 +17,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { TASK_START_HEADINGS, TASK_START_PREMISE_CHECK } from "@/mcp/task-start-headings";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -42,7 +43,7 @@ describe.skipIf(!QA_URL)("task-start rule order, against a real database", () =>
       await db.convention.deleteMany({ where: { orgId } });
       await db.auditLog.deleteMany({ where: { orgId } });
       await db.capability.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

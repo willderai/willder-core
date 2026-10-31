@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/inngest", () => ({ ingestMemory: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/mcp/change-notices", async (importOriginal) => {
@@ -46,7 +47,7 @@ describe.skipIf(!QA_URL)("the served-vs-used log when the block is slow to read"
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
     await db.agentCursor.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {

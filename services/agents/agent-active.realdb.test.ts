@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -31,7 +32,7 @@ describe.skipIf(!QA_URL)("driving a run whose agent was deactivated, against a r
     await db.agentRun.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
     await db.agent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   async function deactivatedAgent(role: "qa" | "architecture") {

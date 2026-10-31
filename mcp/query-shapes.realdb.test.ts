@@ -18,6 +18,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { PREFERENCE_BLOCK_LABEL, RETRIEVAL_QUERY_SHAPES_FLAG } from "@/services/memory/query-shapes";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -206,7 +207,7 @@ describe.skipIf(!QA_URL)("memory_query's preference block, on a real read", { ti
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, PREFS, PREFS_FORGET, SIBLING])
       await db.scope.create({ data: { orgId: ORG, path, name: path.split(".").at(-1)! } });
@@ -226,7 +227,7 @@ describe.skipIf(!QA_URL)("memory_query's preference block, on a real read", { ti
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

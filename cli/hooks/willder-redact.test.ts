@@ -179,7 +179,7 @@ describe("layer 6: long runs that look random", () => {
 
   it.each([
     ["a git commit id", "9fceb02d0ae598e95dc970b74767f19372d61af8"],
-    ["a SHA-256 hex digest", "e5460e464ba9c23c42f568c14cc26e199e955d54e5460e464ba9c23c42f568c1"],
+    ["a SHA-256 hex digest", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"],
     ["a UUID", "3f1c9a2e-77aa-4b1c-9d00-1234567890ab"],
     ["a long identifier", "AbstractSingletonProxyFactoryBeanImpl2Handler"],
     ["a file path", "src/components/Dashboard/WidgetContainerV2/index.tsx"],

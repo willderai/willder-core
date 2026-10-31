@@ -30,6 +30,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // The leaf module, not the `@/services/access` barrel: the barrel builds the `@/lib/db`
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -228,7 +229,7 @@ describe.skipIf(!QA_URL)("memory_query keeps a multi-line fact on one cited bull
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.org.create({ data: { id: OTHER_ORG, name: OTHER_ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
@@ -244,7 +245,7 @@ describe.skipIf(!QA_URL)("memory_query keeps a multi-line fact on one cited bull
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

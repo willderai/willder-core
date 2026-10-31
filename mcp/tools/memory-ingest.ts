@@ -24,6 +24,7 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { AccessDeniedError, check, normalizeScopePath, resolveCallerScopePath } from "@/services/access";
 import type { IngestAck } from "@/lib/inngest";
+import { changeTheRule } from "@/services/memory/person-rule-copy";
 import { CONVENTION_KINDS, recordAuthorizedConvention } from "@/services/memory/conventions";
 import { FACT_ROLES, type FactRole } from "@/services/memory/fact-roles";
 import { ingestKeySchema, ingestRequestHash, withIngestKey } from "@/services/memory/ingest-key";
@@ -33,7 +34,10 @@ import { MAX_DECLARED_SCOPES } from "@/services/access/derived-writes";
 import { invalidCallerScopePath, noCapability } from "@/services/access/deny-reason";
 import { VersionNotStoredError } from "@/services/memory/pgvector-store";
 import { isSessionStateCapture } from "../session-capture";
-import { authorizeDerivedWrite, announceDerivedWrite, type DerivedShare } from "../derived-write";
+import { authorizeDerivedWrite, announceDerivedWrite, derivedMarkersFor, type DerivedShare } from "../derived-write";
+import { StaleBaseVersionError } from "@/services/memory/fact-update";
+import { readMemoryVersion } from "@/services/memory/versions";
+import { describeVersion } from "./memory-version";
 import { recordServedVersions, toolError, type ToolContext } from "./tool-context";
 import { receivedNow } from "@/services/memory/received-at";
 
@@ -67,7 +71,7 @@ const memoryIngestInput = {
     .min(1)
     .optional()
     .describe(
-      "Without kind: the id of the version of this fact (same name and scope) you read and are replacing, as a read or change notice gave it. Refused, naming the current version, if it was replaced since. Omit to replace nothing; that is still refused when there is a newer version you have not read.",
+      "Without kind: the id of the version of this fact (same name and scope) you read and are replacing, as a read or change notice gave it. Refused, naming the current version, if it was replaced since. An agent's write on the copy of a rule a person recorded or confirmed replaces nothing: it is kept beside it. Omit to replace nothing; that is still refused when there is a newer version you have not read.",
     ),
   role: z
     .enum(FACT_ROLES)
@@ -204,7 +208,67 @@ async function handleMemoryIngest(
     }
     return textReply(reply.text);
   } catch (e) {
+    if (e instanceof StaleBaseVersionError) return staleRefusal(toolContext, e);
     return toolError(withOwnScopeHint(e, scopePath, cap.agentId));
+  }
+}
+
+/** The line that opens the version a stale refusal carries. */
+export const CURRENT_VERSION_HEADING = "The current version, whole, so you need no other read:";
+
+/** The line that opens the version the refused write was based on, shown after the current one. */
+export const BASE_VERSION_HEADING = "The version your write was based on, whole:";
+
+/**
+ * The version the refused write named as its base, described, or "" when it cannot be shown. It is
+ * extra: without it the writer can still act on the current version, so a failure here never costs
+ * the refusal that version.
+ */
+async function baseVersionSection(ctx: ToolContext["ctx"], baseVersionId: string): Promise<string> {
+  try {
+    const base = await readMemoryVersion(ctx, baseVersionId);
+    if (!base) return "";
+    const shared = (await derivedMarkersFor(ctx, [base.id])).get(base.id);
+    return `\n\n${BASE_VERSION_HEADING}\n${describeVersion(base, shared)}`;
+  } catch (e) {
+    console.warn(`[mcp] stale refusal sent without base version ${baseVersionId}:`, e instanceof Error ? e.message : e);
+    return "";
+  }
+}
+
+/**
+ * A stale refusal with the version that replaced the writer's base, served as memory_version
+ * serves it: the same access decision, and recorded as read, so the agent has been shown it whole.
+ * The base version follows, read the same way, because "keeping what it added" needs both texts:
+ * the loser can then name the current version and its writer and settle its change from this one
+ * reply. The base is not recorded as read: the writer read it before this reply, and nothing is
+ * written back on it. A version it may not read, or one that cannot be read or recorded now,
+ * leaves the bare refusal, which still tells it to read that version.
+ */
+async function staleRefusal({ ctx, cap }: ToolContext, refusal: StaleBaseVersionError): Promise<CallToolResult> {
+  const refused = toolError(refusal);
+  try {
+    const version = await readMemoryVersion(ctx, refusal.currentVersionId);
+    if (!version) return refused;
+    const shared = (await derivedMarkersFor(ctx, [version.id])).get(version.id);
+    const base = await baseVersionSection(ctx, refusal.baseVersionId);
+    // Recorded last: a version recorded as read must be one this reply really shows.
+    if (version.kind === "fact") await recordServedVersions(cap, [version.id]);
+    return {
+      ...refused,
+      content: [
+        {
+          type: "text",
+          text: `${refused.content[0]!.text}\n\n${CURRENT_VERSION_HEADING}\n${describeVersion(version, shared)}${base}`,
+        },
+      ],
+    };
+  } catch (e) {
+    console.warn(
+      `[mcp] stale refusal sent without version ${refusal.currentVersionId}:`,
+      e instanceof Error ? e.message : e,
+    );
+    return refused;
   }
 }
 
@@ -401,14 +465,17 @@ async function writeNote(
   // is answered with that version: the agent has seen it whole, by sending it.
   if (ack?.versionId && !rule) await recordServedVersions(cap, [ack.versionId], { ownWrite: true });
   const stored = storedReply(ack, name);
+  const beside = ack?.keptBeside ? ` ${keptBesideReply(ack.keptBeside, rule !== null)}` : "";
   const shared = share.from.length > 0 ? ` ${sharedReply(share.from)}` : "";
   if (rule)
-    return `${ruleRecordedReply(kind!, rule.id, target)}${rule.kept ? ` ${keptRuleReply(kind!, rule.kept, rule.id)}` : ""} ${stored}${shared}`;
+    return `${ruleRecordedReply(kind!, rule.id, target)}${rule.kept ? ` ${keptRuleReply(kind!, rule.kept, rule.id)}` : ""} ${stored}${beside}${shared}`;
   const dateNote =
     ack?.storedDateKept && ack.versionId
       ? ` ${storedDateNote(ack.versionId, ack.storedDateKept.occurredAt, occurredAt !== undefined)}`
       : "";
-  return ack?.versionId ? `${stored} Version: ${ack.versionId}.${dateNote}${shared}` : `${stored}${shared}`;
+  return ack?.versionId
+    ? `${stored} Version: ${ack.versionId}.${dateNote}${beside}${shared}`
+    : `${stored}${beside}${shared}`;
 }
 
 /** The failed write of a recorded rule's fact copy, kept apart from an ingest's reply. */
@@ -423,10 +490,36 @@ class RuleCopyNotStored {
  * copy of the rule this one `replaced`.
  */
 function ruleCopyNotStoredReply(cause: unknown, replaced: boolean): string {
+  if (cause instanceof StaleBaseVersionError) return staleRuleCopyReply(cause, replaced);
   const why = cause instanceof VersionNotStoredError ? cause.reason : toolError(cause).content[0]!.text;
   return (
     `The rule is recorded and served, but the fact copy of its text that memory_query searches was not stored (${why}). ` +
     "Do not send this call again: it would record the rule a second time. To store the copy, send memory_ingest with the same content, name and scopePath and without kind or supersedes." +
+    (replaced ? " Until then memory_query can still serve the text of the rule this one replaced." : "")
+  );
+}
+
+/**
+ * The same reply when the copy named a stale base. A rule is already recorded and a person may be
+ * asked to confirm it, so the plain refusal's words ("Nothing was stored", settling the change)
+ * do not hold here: this says only what became of the copy.
+ */
+function staleRuleCopyReply(
+  { baseVersionId, currentVersionId, storedVersionId, rule }: StaleBaseVersionError,
+  replaced: boolean,
+): string {
+  const again = "Do not send this call again: it would record the rule a second time.";
+  const person = rule
+    ? ` ${currentVersionId} is the copy of ${rule.kind} ${rule.ruleId}, which a person recorded or confirmed.`
+    : "";
+  if (storedVersionId) {
+    return `The rule is recorded and served, and its fact copy was stored as ${storedVersionId}, but ${currentVersionId} replaced it first, so memory_query serves ${currentVersionId}.${person} ${again}`;
+  }
+  return (
+    `The rule is recorded and served, but the fact copy of its text that memory_query searches was not stored, because baseVersion ${baseVersionId} is out of date: ${currentVersionId} replaced it.${person} ${again} ` +
+    (rule
+      ? `To store the copy beside ${currentVersionId}, read it with memory_version, then send memory_ingest with the same content, name and scopePath, baseVersion ${currentVersionId}, and without kind or supersedes.`
+      : `To store the copy on ${currentVersionId}, read it with memory_version, then send memory_ingest with the same content, name and scopePath, baseVersion ${currentVersionId}, and without kind or supersedes.`) +
     (replaced ? " Until then memory_query can still serve the text of the rule this one replaced." : "")
   );
 }
@@ -438,6 +531,19 @@ function ruleCopyNotStoredReply(cause: unknown, replaced: boolean): string {
 function ruleConfirmUrl(id: string): string {
   const origin = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "http://localhost:3000";
   return `${origin}/memory/confirm/${encodeURIComponent(id)}`;
+}
+
+/**
+ * What the reply adds when a write based on the copy of a person's rule was kept beside it
+ * (services/memory/person-rule-copy.ts). Unless the write was itself a new rule, it names the way
+ * to change the rule.
+ */
+function keptBesideReply({ versionId, ...rule }: NonNullable<IngestAck["keptBeside"]>, proposed: boolean): string {
+  const { ruleId, kind } = rule;
+  return (
+    `It did not replace ${versionId}: that is the copy of ${kind} ${ruleId}, which a person recorded or confirmed, so memory_query serves it first and this beside it as a lead.` +
+    (proposed ? "" : ` To change the ${kind} itself, ${changeTheRule(rule)}`)
+  );
 }
 
 /**

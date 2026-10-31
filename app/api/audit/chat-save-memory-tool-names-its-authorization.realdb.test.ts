@@ -17,6 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -113,7 +114,7 @@ describe.skipIf(!QA_URL)("Ask's save_memory tool call names the audit row its ow
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -122,7 +123,7 @@ describe.skipIf(!QA_URL)("Ask's save_memory tool call names the audit row its ow
   beforeEach(async () => {
     queuedJobs.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "Chat tool org" } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "planning" } });

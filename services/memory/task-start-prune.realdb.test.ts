@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -109,7 +110,7 @@ describe.skipIf(!QA_URL)(
       vi.restoreAllMocks();
       for (const orgId of [ORG, OTHER_ORG]) {
         await db.taskStartDelivery.deleteMany({ where: { orgId } });
-        await db.org.deleteMany({ where: { id: orgId } });
+        await deleteOrgsWithRetry(db, { where: { id: orgId } });
       }
       await db.$disconnect();
       await appDb.$disconnect();

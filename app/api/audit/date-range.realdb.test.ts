@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 
@@ -76,7 +77,7 @@ describe.skipIf(!QA_URL)("the audit log's date range", { timeout: 30_000 }, () =
         await (db[t] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: org } });
       }
       await db.user.deleteMany({ where: { orgId: org } });
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

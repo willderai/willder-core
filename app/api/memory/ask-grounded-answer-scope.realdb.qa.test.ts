@@ -20,6 +20,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
 import { stubMemoryService, textEmbedding } from "@/tests/support/memory-service-double.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const session = vi.hoisted(() => ({ current: null as unknown }));
 /** Every search result the model was handed this turn. */
@@ -143,7 +144,7 @@ describe.skipIf(!QA_URL)("Ask grounds its answer only in facts the caller may re
     for (const orgId of [ORG, OTHER_ORG]) {
       await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${orgId}`;
       await db.$executeRaw`DELETE FROM audit_log WHERE "orgId" = ${orgId}`;
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   };
 

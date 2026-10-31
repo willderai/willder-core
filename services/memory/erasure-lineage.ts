@@ -3,7 +3,8 @@
 //
 // A version that replaced another (a person's correction, an update based on it, an upstream
 // edit of a connector item) is linked to it by a `supersedes` edge from the new version to the
-// old (services/memory/edges.ts). A correction made through PATCH /api/memory/facts/:id is
+// old (services/memory/edges.ts). A version an agent based on a person's rule copy replaced
+// nothing, and is linked by a `derivedFrom` edge instead (services/memory/person-rule-copy.ts). A correction made through PATCH /api/memory/facts/:id is
 // linked a second way, which also holds for one stored in another scope than the fact (no edge
 // is recorded then) and for one made before edges were: its removal of the fact and its new text
 // are announced naming the one audit row that authorized both (`authorizedById`, since
@@ -111,8 +112,11 @@ export async function versionsWrittenInPlaceOf(
   let frontier = [...visited];
   for (let depth = 0; frontier.length > 0; depth++) {
     if (depth >= maxDepth) throw new ErasureLineageTooLargeError("depth", maxDepth);
-    // A `supersedes` edge, or a person's correction announced under the authorization its
-    // removal of the replaced version was announced under. Only a PATCH correction shares one:
+    // A `supersedes` edge, or a `derivedFrom` edge from a version kept beside a person's rule copy
+    // (services/memory/person-rule-copy.ts), written from that copy though it replaced nothing, or
+    // a person's correction announced under the authorization its removal of the replaced
+    // version was announced under. A declared share's `derivedFrom` edge names a scope, which is
+    // never in the frontier. Only a PATCH correction shares one:
     // both its events are a person's, while a connector's events share its connect row and are
     // announced as the sync's.
     const edges = await reader.$queryRaw<ReplacementEdge[]>`
@@ -124,7 +128,7 @@ export async function versionsWrittenInPlaceOf(
       FROM (
         SELECT e."fromId", e."toId", e."createdAt" AS at, e.id AS tie
         FROM fact_edges e
-        WHERE e."orgId" = ${orgId} AND e.kind = 'supersedes' AND e."toId" = ANY (${frontier}::text[])
+        WHERE e."orgId" = ${orgId} AND e.kind IN ('supersedes', 'derivedFrom') AND e."toId" = ANY (${frontier}::text[])
         UNION ALL
         SELECT created."recordId", removal."recordId", created."createdAt", created.id
         FROM change_events removal
@@ -159,7 +163,7 @@ export async function versionsWrittenInPlaceOf(
  */
 export async function erasedVersionsWithReplacements(reader: LineageReader, orgId: string): Promise<string[]> {
   const replaced = await reader.$queryRaw<{ id: string }[]>`
-    SELECT "toId" AS id FROM fact_edges WHERE "orgId" = ${orgId} AND kind = 'supersedes'
+    SELECT "toId" AS id FROM fact_edges WHERE "orgId" = ${orgId} AND kind IN ('supersedes', 'derivedFrom')
     UNION
     SELECT "recordId" FROM change_events
     WHERE "orgId" = ${orgId} AND "recordType" = ${FACT_RECORD_TYPE} AND op = 'supersede'

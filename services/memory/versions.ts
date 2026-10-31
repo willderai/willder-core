@@ -45,6 +45,25 @@ export interface MemoryVersion {
   supersededById: string | null;
   /** The versions this one replaced, leaving out any that reads as erased. */
   supersedesIds: string[];
+  /**
+   * When this version was superseded: the first `supersedes` edge recorded against it, or for a
+   * rule replaced through its own row, when its replacement was written. Null when it is not
+   * superseded or the moment is not known; absent from a version built without the lineage read.
+   */
+  supersededAt?: Date | null;
+  /**
+   * When a fact version says its content happened, when its writer gave that (memory_ingest's
+   * `occurredAt`); null for a rule or a fact written without one.
+   */
+  occurredAt?: Date | null;
+  /**
+   * The date of each version the lineage names (`supersededById`, `supersedesIds`), by id, for
+   * those whose row is still stored: when its content happened (`occurredAt`), else when it was
+   * written, the date memory_query serves a version with. Only ids the lineage already names
+   * after its erasure filter are looked up, so it dates nothing a reader of this version could
+   * not open.
+   */
+  lineageDatedAt?: Record<string, Date>;
 }
 
 /**
@@ -63,13 +82,57 @@ export async function readMemoryVersion(ctx: AccessContext, id: string): Promise
   const decision = await check(ctx, { action: "memory.read", scope: found?.scopePath ?? orgRootPath(ctx.orgId) });
   if (!found || !decision.allowed) return null;
 
-  const lineage = mergeLineage(found, await supersessionEdges(ctx.orgId, id));
+  const edges = await supersessionEdges(ctx.orgId, id);
+  const lineage = mergeLineage(found, edges);
+  const shown = await withoutErasedVersions(ctx.orgId, lineage);
+  const { writtenAt, datedAt: lineageDatedAt } = await lineageDates(ctx.orgId, [
+    ...shown.supersedesIds,
+    ...(shown.supersededById ? [shown.supersededById] : []),
+  ]);
+  // The row's own replacement wins over the graph's (mergeLineage), and so does its date: a rule
+  // replaced through its row was superseded when that replacement was written. A replacement
+  // that reads as erased is not named, and neither is when it took over.
+  const supersededAt = !shown.supersededById
+    ? null
+    : found.supersededById
+      ? (writtenAt[found.supersededById] ?? null)
+      : edges.supersededAt;
   return {
     ...found,
-    ...(await withoutErasedVersions(ctx.orgId, lineage)),
+    ...shown,
     // From the lineage as recorded: a version an erased one replaced stays superseded,
     // as every read path still treats it.
     status: found.status === "retired" ? "retired" : lineage.supersededById ? "superseded" : "current",
+    supersededAt,
+    lineageDatedAt,
+  };
+}
+
+/**
+ * When each of `ids` was written and the date it is served with (`occurredAt`, else when it was
+ * written), by id: a stored fact version's row or a rule's, of this org only. An id with no such
+ * row (a corrected fact whose row is gone) is absent. Makes no access decision: callers pass
+ * only ids a version the caller may read already names.
+ */
+async function lineageDates(
+  orgId: string,
+  ids: readonly string[],
+): Promise<{ writtenAt: Record<string, Date>; datedAt: Record<string, Date> }> {
+  const named = [...new Set(ids)];
+  if (named.length === 0) return { writtenAt: {}, datedAt: {} };
+  const [rows, rules] = await Promise.all([
+    db.memoryChunk.findMany({
+      where: { orgId, id: { in: named } },
+      select: { id: true, createdAt: true, occurredAt: true },
+    }),
+    db.convention.findMany({ where: { orgId, id: { in: named } }, select: { id: true, createdAt: true } }),
+  ]);
+  return {
+    writtenAt: Object.fromEntries([...rows, ...rules].map((r) => [r.id, r.createdAt])),
+    datedAt: Object.fromEntries([
+      ...rows.map((r) => [r.id, r.occurredAt ?? r.createdAt] as const),
+      ...rules.map((r) => [r.id, r.createdAt] as const),
+    ]),
   };
 }
 
@@ -211,9 +274,10 @@ async function readFactVersion(orgId: string, id: string): Promise<StoredVersion
       scopePath: string | null;
       actorId: string | null;
       createdAt: Date;
+      occurredAt: Date | null;
     }[]
   >(Prisma.sql`
-    SELECT "id", "content", "entityName", "scopePath", "actorId", "createdAt"
+    SELECT "id", "content", "entityName", "scopePath", "actorId", "createdAt", "occurredAt"
     FROM "memory_chunks"
     WHERE "id" = ${id} AND "orgId" = ${orgId}
     LIMIT 1
@@ -235,6 +299,7 @@ async function readFactVersion(orgId: string, id: string): Promise<StoredVersion
     subject: row.entityName,
     actorId: row.actorId,
     createdAt: new Date(row.createdAt),
+    occurredAt: row.occurredAt ? new Date(row.occurredAt) : null,
     status: "current",
     supersededById: null,
     supersedesIds: [],
@@ -285,10 +350,10 @@ async function readConventionVersion(orgId: string, id: string): Promise<StoredV
 async function supersessionEdges(
   orgId: string,
   id: string,
-): Promise<{ supersededById: string | null; supersedesIds: string[] }> {
+): Promise<{ supersededById: string | null; supersedesIds: string[]; supersededAt: Date | null }> {
   const edges = await db.factEdge.findMany({
     where: { orgId, kind: "supersedes", OR: [{ fromId: id }, { toId: id }] },
-    select: { fromId: true, toId: true },
+    select: { fromId: true, toId: true, createdAt: true },
     // Edges written in one statement can share a millisecond; the id orders them the way
     // supersedingVersions (services/memory/superseded-facts.ts) does, so both name the
     // same replacement.
@@ -298,5 +363,6 @@ async function supersessionEdges(
   return {
     supersededById: replacement?.fromId ?? null,
     supersedesIds: edges.filter((edge) => edge.fromId === id).map((edge) => edge.toId),
+    supersededAt: replacement?.createdAt ?? null,
   };
 }

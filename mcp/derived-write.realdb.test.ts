@@ -22,6 +22,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { NoRelationMemoryService } from "./no-relation-memory-service.testsupport";
 import { mcpSession, type ToolAnswer } from "./mcp-session.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -136,7 +137,7 @@ describe.skipIf(!QA_URL)("derived writes: the rule, its declarations and its ses
   const stored = (org: string, content: string) => db.memoryChunk.count({ where: { orgId: org, content } });
 
   async function seedOrg(org: string, s: ReturnType<typeof scopesOf>): Promise<void> {
-    await db.org.deleteMany({ where: { id: org } });
+    await deleteOrgsWithRetry(db, { where: { id: org } });
     await db.org.create({ data: { id: org, name: org } });
     for (const path of [s.root, s.deals, s.allStaff, s.board, s.townHall, s.research, s.hr, s.ops, s.legal]) {
       const scope = await db.scope.create({ data: { orgId: org, path, name: path.split(".").at(-1)! } });
@@ -229,7 +230,7 @@ describe.skipIf(!QA_URL)("derived writes: the rule, its declarations and its ses
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   }, 60_000);
 

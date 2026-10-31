@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The signed-in person the route sees. */
 const session = vi.hoisted(() => ({ current: null as unknown }));
@@ -88,7 +89,7 @@ describe.skipIf(!QA_URL)("Ask tells the model when its search was incomplete", (
 
   afterAll(async () => {
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllGlobals();
   });
@@ -96,7 +97,7 @@ describe.skipIf(!QA_URL)("Ask tells the model when its search was incomplete", (
   beforeEach(async () => {
     turns.length = 0;
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "Chat incomplete read" } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     const person = await db.user.create({

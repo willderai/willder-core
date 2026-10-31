@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { backfillEmailVerified, type ClerkUserDirectory, type ClerkDirectoryUser } from "./backfill-email-verified";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "qa-backfill-email-verified";
@@ -95,7 +96,7 @@ describe.skipIf(!QA_URL)("backfillEmailVerified against a real database", () => 
 
   async function wipe() {
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {
@@ -181,7 +182,7 @@ describe.skipIf(!QA_URL)("backfillEmailVerified against a real database", () => 
       expect(clerk.requests.flat()).not.toContain(clerkIdOf("bev-00-other-org"));
     } finally {
       await db.user.deleteMany({ where: { orgId: other } });
-      await db.org.deleteMany({ where: { id: other } });
+      await deleteOrgsWithRetry(db, { where: { id: other } });
     }
   });
 

@@ -11,6 +11,7 @@
 // one a based update replaced (an edge and a "replaced by" event), and connector rows whose
 // source sits in the reader's scope, in a private sibling scope, or nowhere.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -39,7 +40,7 @@ describe.skipIf(!QA_URL)(
       await db.factEdge.deleteMany({ where: { orgId: ORG } });
       await db.changeEvent.deleteMany({ where: { orgId: ORG } });
       await db.source.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
     }
 
     /** A fact version stored in `scopePath`, and its create event recorded for the task. */

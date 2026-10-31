@@ -33,6 +33,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Ingest jobs queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -244,7 +245,7 @@ describe.skipIf(!QA_URL)("a fact version and its outcome become readable togethe
   afterAll(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
   beforeEach(async () => {
@@ -254,7 +255,7 @@ describe.skipIf(!QA_URL)("a fact version and its outcome become readable togethe
     vi.spyOn(inngest, "send")
       .mockClear()
       .mockResolvedValue({ ids: ["job"] } as never);
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

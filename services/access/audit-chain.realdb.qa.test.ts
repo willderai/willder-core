@@ -11,6 +11,7 @@ import { Pool, type PoolClient } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { auditRowHash, verifyAuditChain, type CanonicalAuditRow } from "./audit-chain";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const PREFIX = "achain-qa-";
@@ -70,7 +71,7 @@ describe.skipIf(!QA_URL)("audit chain QA, real Postgres", () => {
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: { startsWith: PREFIX } } });
+    await deleteOrgsWithRetry(db, { where: { id: { startsWith: PREFIX } } });
     await pool.end();
     await db.$disconnect();
   });

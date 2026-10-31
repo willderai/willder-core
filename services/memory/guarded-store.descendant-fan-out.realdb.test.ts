@@ -28,6 +28,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { MemoryStore } from "./memory-store";
 import type { EntityLookup, SearchInput, SearchResult } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // The stand-in graph's facts here have no stored rows behind them, and this file is about
 // how a read fans out over descendant scopes, not about which facts a stored source supports: the serve-time source check
@@ -176,7 +177,7 @@ describe.skipIf(!QA_URL)("a read over sixty descendant scopes asks them in one g
 
   afterAll(async () => {
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

@@ -24,6 +24,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { MemoryStore } from "./memory-store";
 import type { IngestInput, MemoryFact, SearchInput, SearchResult } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "unbasedlostupdate";
@@ -239,13 +240,13 @@ describe.skipIf(!QA_URL)("an unbased write-back from a stale read loses nothing"
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
   beforeEach(async () => {
     graph = new FallbackGraph();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "demo" } });

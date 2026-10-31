@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-scope-residue";
@@ -49,7 +50,7 @@ describe.skipIf(!QA_URL)("scope delete refuses residue and clears the feed, real
     ] as unknown as { deleteMany(args: unknown): Promise<unknown> }[]) {
       await model.deleteMany({ where: { orgId: orgs } });
     }
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   }
 
   beforeEach(async () => {

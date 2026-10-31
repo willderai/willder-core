@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { SETTINGS_PAGE_SIZE } from "@/lib/settings-lists";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -55,7 +56,7 @@ describe.skipIf(!QA_URL)("Settings role and alias pages stay inside the org and 
       for (const t of ["grant", "scope", "user"] as const) {
         await (db[t] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: org } });
       }
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

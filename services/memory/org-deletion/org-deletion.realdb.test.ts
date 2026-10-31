@@ -29,6 +29,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
 import { listAsTheApp } from "@/services/memory/erasure-suppression.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -192,7 +193,7 @@ describe.skipIf(!QA_URL)("org deletion, real Postgres", { timeout: 60_000 }, () 
   };
 
   async function reset() {
-    await db.org.deleteMany({ where: { id: { in: [A, B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [A, B] } } });
     await db.user.deleteMany({ where: { id: { in: PEOPLE } } });
     await db.orgDeletion.deleteMany({ where: { orgId: { in: [A, B] } } });
     blobs.clear();

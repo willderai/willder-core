@@ -25,6 +25,7 @@ import type { AccessContext } from "@/services/access";
 import type { MemoryStore } from "./memory-store";
 import type { IngestInput, MemoryFact, SearchResult } from "@/types/memory";
 import { stubEmbedService } from "./embed-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** One episode the write path sent to the graph, with the chunk id it was stamped with. */
 interface Episode {
@@ -190,7 +191,7 @@ describe.skipIf(!QA_URL)("a retired version's place goes to its current successo
   async function wipe() {
     await db.$executeRaw`DELETE FROM fact_edges WHERE "orgId" = ${ORG}`;
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {

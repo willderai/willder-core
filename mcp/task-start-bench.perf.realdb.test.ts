@@ -24,6 +24,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const CHUNKS = Number(process.env.WILLDER_PERF_CHUNKS ?? 5000);
@@ -65,7 +66,7 @@ describe.skipIf(!QA_URL || process.env.WILLDER_PERF_TESTS !== "1")(
       process.env.DATABASE_URL = QA_URL;
       db = new PrismaClient({ adapter: new PrismaPg({ connectionString: QA_URL }) });
       ({ taskStartNotice } = await import("./task-start-notice"));
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.org.create({ data: { id: ORG, name: ORG } });
 
       const scopes = [SCOPE, ...Array.from({ length: 40 }, (_, i) => `${SCOPE}.s${i}`)];
@@ -152,7 +153,7 @@ describe.skipIf(!QA_URL || process.env.WILLDER_PERF_TESTS !== "1")(
 
     afterAll(async () => {
       if (!db) return;
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
     });
 

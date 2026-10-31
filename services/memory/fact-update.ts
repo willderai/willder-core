@@ -42,7 +42,10 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import type { AuditOrigin } from "@/services/access/origin";
 import { orgRootPath } from "@/services/access/org-root";
 import { scopeContainsSql } from "@/services/access/scope-containment";
-import { factVersionSql, recordSupersession, type ConflictTransaction } from "./conflict";
+import { asActorType, factVersionSql, recordSupersession, type ConflictTransaction } from "./conflict";
+import { recordEdge } from "./edges";
+import { UNKNOWN_ACTOR_ID } from "@/services/access/system-actors";
+import { changeTheRule, personRuleCopyOf, personRuleCopySentence, type PersonRuleCopy } from "./person-rule-copy";
 
 /** The slice of a Prisma client or transaction a lookup here needs. */
 export type FactVersionReader = Pick<Prisma.TransactionClient, "$queryRaw">;
@@ -67,20 +70,36 @@ export class StaleBaseVersionError extends Error {
   readonly baseVersionId: string;
   readonly currentVersionId: string;
   readonly storedVersionId?: string;
+  /** Set when the current version is the copy of a person's rule, which this writer cannot replace. */
+  readonly rule?: PersonRuleCopy;
 
-  constructor(fact: FactName, input: { baseVersionId: string; currentVersionId: string; storedVersionId?: string }) {
+  constructor(
+    fact: FactName,
+    input: { baseVersionId: string; currentVersionId: string; storedVersionId?: string; rule?: PersonRuleCopy },
+  ) {
     const stored = input.storedVersionId
       ? ` Your write was stored as ${input.storedVersionId} and is superseded by ${input.currentVersionId}; both are readable by id.`
       : " Nothing was stored.";
+    const current = input.currentVersionId;
+    const settle = input.rule
+      ? `${personRuleCopySentence(current, input.rule)} Read ${current} with memory_version unless this reply already shows its text. ` +
+        `Your change is yours to settle: if it still applies, write it again with baseVersion ${current}, and it is served beside ${current} as a lead; ` +
+        `if ${current} already covers it, leave ${current} as it stands. To change the ${input.rule.kind} itself, ${changeTheRule(input.rule)} ` +
+        `Then say in one sentence which you did: I redid my change beside ${current}, or I left ${current} as it stands.`
+      : `Read ${current} with memory_version unless this reply already ` +
+        `shows its text. Your change is yours to settle: if it still applies, write it again with baseVersion ${current}, keeping what ` +
+        `${current} added; if ${current} already covers it, leave ${current} as it stands. A rewrite leaves ` +
+        `${current} readable by id, and the replacement shows in this scope's change feed. Then say in one sentence which you did: ` +
+        `I redid my change on ${current}, or I left ${current} as it stands.`;
     super(
       `baseVersion ${input.baseVersionId} does not match the current version of "${fact.entityName}" in ${fact.scopePath}: ` +
-        `the fact it is a version of is now ${input.currentVersionId}.${stored} Read ${input.currentVersionId} with memory_version, then write again ` +
-        `with baseVersion ${input.currentVersionId}.`,
+        `the fact it is a version of is now ${current}.${stored} ${settle}`,
     );
     this.name = "StaleBaseVersionError";
     this.baseVersionId = input.baseVersionId;
     this.currentVersionId = input.currentVersionId;
     this.storedVersionId = input.storedVersionId;
+    this.rule = input.rule;
   }
 }
 
@@ -168,7 +187,12 @@ export async function assertBaseVersionCurrent(reader: FactVersionReader, target
   if (!base) throw new UnknownBaseVersionError(nameOf(target), target.baseVersionId);
   const current = await currentVersionSince(reader, target, base, null);
   if (current !== base.id) {
-    throw new StaleBaseVersionError(nameOf(target), { baseVersionId: base.id, currentVersionId: current });
+    const rule = await personRuleCopyOf(reader, target.orgId, current);
+    throw new StaleBaseVersionError(nameOf(target), {
+      baseVersionId: base.id,
+      currentVersionId: current,
+      ...(rule ? { rule } : {}),
+    });
   }
 }
 
@@ -176,6 +200,8 @@ export async function assertBaseVersionCurrent(reader: FactVersionReader, target
 export interface BasedWriteOutcome {
   /** The version that is current instead of this one, or null when this one is current. */
   supersededBy: string | null;
+  /** Set when this version stands beside its base, the copy of this person's rule, and replaced nothing. */
+  keptBeside?: PersonRuleCopy;
 }
 
 /**
@@ -190,6 +216,12 @@ export interface BasedWriteOutcome {
  * - Otherwise this version is stale: superseded by the current version, with the event on
  *   this version attributed to that version's writer, so this writer hears it (its own
  *   writes are filtered out of its change notices).
+ *
+ * - The base is the copy of a person's rule in force and an agent wrote this version: it replaces
+ *   nothing (services/memory/person-rule-copy.ts). It stands beside the copy as a write without
+ *   a base does, so it records no base, or the next writer on the copy would read it as newer.
+ *   A `derivedFrom` edge says what it was written from: an erasure of the copy takes it too
+ *   (services/memory/erasure-lineage.ts).
  *
  * An edge is only ever written between two versions that are both current at the time,
  * which keeps the `supersedes` graph free of cycles whatever order concurrent
@@ -215,6 +247,21 @@ export async function recordBasedWrite(
   if (!base) return { supersededBy: null };
   // Already announced: this version replaced its base, and is current.
   if ((await supersederOf(tx, target.orgId, base.id)) === self.id) return { supersededBy: null };
+  if (self.actorType !== "human") {
+    const rule = await personRuleCopyOf(tx, target.orgId, base.id);
+    if (rule) {
+      await tx.$queryRaw`UPDATE "memory_chunks" SET "baseVersionId" = NULL WHERE "id" = ${self.id} AND "orgId" = ${target.orgId} RETURNING "id"`;
+      await recordEdge(tx, {
+        orgId: target.orgId,
+        fromId: self.id,
+        toId: base.id,
+        kind: "derivedFrom",
+        scopePath: target.eventScopePath,
+        actor: { type: asActorType(self.actorType), id: self.actorId ?? UNKNOWN_ACTOR_ID },
+      });
+      return { supersededBy: null, keptBeside: rule };
+    }
+  }
 
   const announced = {
     orgId: target.orgId,

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { ACCOUNT_PAGE_SIZE } from "@/lib/integration-lists";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -81,7 +82,7 @@ describe.skipIf(!QA_URL)("the Integrations account lists are paged and narrowed 
     for (const org of [ORG, OTHER_ORG]) {
       await db.integration.deleteMany({ where: { orgId: org } });
       await db.user.deleteMany({ where: { orgId: org } });
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

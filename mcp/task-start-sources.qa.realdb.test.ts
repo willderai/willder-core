@@ -6,6 +6,7 @@
 // path, a lost-conflict version whose source the reader cannot see (the version line and the
 // ask line), two people in conflict, and a conflict where one version names an erased person.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -31,7 +32,7 @@ describe.skipIf(!QA_URL)("task-start sources and conflicts: access cases (QA)", 
       await db.changeEvent.deleteMany({ where: { orgId: org } });
       await db.source.deleteMany({ where: { orgId: org } });
       await db.erasureSuppression.deleteMany({ where: { orgId: org } });
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

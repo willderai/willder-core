@@ -15,6 +15,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { renderSessionState, sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -142,7 +143,7 @@ describe.skipIf(!QA_URL)("a task's captured tests, two tenants with the same sco
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
     for (const orgId of [ORG, OTHER_ORG]) {
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
       await db.org.create({ data: { id: orgId, name: orgId } });
       for (const path of ["org_qa698", WEB]) await db.scope.create({ data: { orgId, path, name: path } });
     }
@@ -153,7 +154,7 @@ describe.skipIf(!QA_URL)("a task's captured tests, two tenants with the same sco
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    for (const orgId of [ORG, OTHER_ORG]) await db.org.deleteMany({ where: { id: orgId } });
+    for (const orgId of [ORG, OTHER_ORG]) await deleteOrgsWithRetry(db, { where: { id: orgId } });
     await db.$disconnect();
   });
 

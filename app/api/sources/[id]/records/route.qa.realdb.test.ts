@@ -14,6 +14,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
 import { toGid } from "@/services/memory/graphiti-store";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graph = vi.hoisted(() => ({
   asked: [] as string[],
@@ -73,14 +74,14 @@ describe.skipIf(!QA_URL)("GET /api/sources/:id/records across tenants", () => {
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await db.$disconnect();
   });
 
   beforeEach(async () => {
     graph.asked.length = 0;
     graph.left.length = 0;
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     for (const org of [ORG_A, ORG_B]) {
       await db.org.create({ data: { id: org, name: org } });
       await db.scope.create({ data: { id: `sc-${org}-root`, orgId: org, path: `org_${org}`, name: "root" } });

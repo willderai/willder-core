@@ -15,6 +15,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { listAsTheApp } from "@/services/memory/erasure-suppression.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -39,7 +40,7 @@ describe.skipIf(!QA_URL)("the task-start read's rule order, against a real datab
     await db.convention.deleteMany({ where: { orgId: ORG } });
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
     await db.capability.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   /** Records `rules` in SCOPE, the first the oldest, a minute apart, ending an hour ago. */

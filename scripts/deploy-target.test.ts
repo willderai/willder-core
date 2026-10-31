@@ -35,7 +35,7 @@ const listFromTheIncident: Deployment[] = [
     uid: "dpl_preview_connectors",
     target: null,
     url: "your-app-git-feature-branch.vercel.app",
-    meta: { githubCommitSha: "76bcc1d0000000000000000000000000000000aa" },
+    meta: { githubCommitSha: "11111110000000000000000000000000000000aa" },
   }),
   deployment({
     uid: "dpl_preview_2",

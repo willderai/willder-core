@@ -67,6 +67,7 @@ vi.mock("@/services/guardrails", () => ({
   recordEpisode: async () => undefined,
 }));
 import { PROV_PYTHON, validateProv } from "@/services/audit/prov-validator.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "qaaccept";
@@ -170,7 +171,7 @@ describe.skipIf(!QA_URL)("accepted content: scope, tenant and PROV boundaries", 
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -179,7 +180,7 @@ describe.skipIf(!QA_URL)("accepted content: scope, tenant and PROV boundaries", 
   beforeEach(async () => {
     queuedJobs.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const [id, root] of [
       [ORG, ROOT],
       [OTHER_ORG, OTHER_ROOT],

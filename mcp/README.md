@@ -305,13 +305,25 @@ the item's change notices name, so a notice can be matched to the fact it produc
 the fact is worded differently from the item.
 
 If someone else replaced that version after you read it, the write is refused with
-`stale_version:`, naming the current version, and nothing is stored: read the current version,
-then write again with its id as `baseVersion`. This is what stops agent A, writing back from a
+`stale_version:`, naming the current version, and nothing is stored. The refusal carries that
+version whole, with its writer, unless you may not read it, and after it the version you based
+your write on, so you can settle your change from this one reply: write it again with the
+current id as `baseVersion`, keeping what that version added, or leave that version as it
+stands, then say which you did. A rewrite leaves the version it replaces readable by id, and the
+replacement shows in the scope's change feed. This is what stops agent A, writing back from a
 stale read, from replacing agent B's newer version. If the stale write raced B's so closely
 that it was already stored, it is kept but marked superseded by B's version, never extracted
 into the graph, and the refusal names both. A `baseVersion` that is not a version of this fact
 is refused with `unknown_version:`. An identical retry of an accepted based write replays
 without storing anything again.
+
+A version that copies a rule a person recorded or confirmed is the exception. A write from an
+agent based on it replaces nothing: it is kept beside that version, the reply says so, and
+`memory_query` serves the rule first and the agent's text after it as a lead. The kept version
+stays linked to the copy, so an erasure of the copy removes it too. To change the rule, send
+`kind` with `supersedes`; the person who recorded it, or an owner or admin, then confirms yours
+and retires the old rule. A person's own write replaces the version as usual. When a read serves a fact on that rule's subject and no copy of
+the rule, the first such line opens with the rule's id and text.
 
 ### Writing without `baseVersion`
 
@@ -328,7 +340,7 @@ you read or wrote (or, if you have only seen it in the feed, after the first ver
 there) and more than a second before your write, the write comes from a stale read and is
 refused with `stale_version:`, naming that version; nothing is stored. Read it with
 `memory_version`, then write again: without a base to add your version beside it, or with its
-id as `baseVersion` to replace it. A write that raced that version past the check is kept,
+id as `baseVersion` to replace it, unless it copies a person's rule, which the refusal says. A write that raced that version past the check is kept,
 marked superseded by it, and the refusal names both. A version stored within the second before
 your write is a concurrent write instead, settled by the conflict rule above: when yours loses,
 it is stored, the reply says "Stored, but superseded by <id>", and nothing is refused. A write

@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/inngest", () => ({ ingestMemory: vi.fn().mockResolvedValue(undefined) }));
 
@@ -53,7 +54,7 @@ describe.skipIf(!QA_URL)("the task-start served-vs-used log, through /api/mcp", 
       await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${orgId}`;
       await db.agentCursor.deleteMany({ where: { orgId } });
       await db.capability.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

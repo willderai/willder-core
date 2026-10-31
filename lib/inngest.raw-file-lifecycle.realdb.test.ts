@@ -21,6 +21,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The Blob store: stored bodies by URL, and every pathname ever written. */
 const blobStore = vi.hoisted(() => {
@@ -301,7 +302,7 @@ describe.skipIf(!QA_URL)("a raw file in Blob lives only until it is extracted", 
       await db.capability.deleteMany({ where: { orgId } });
       await db.grant.deleteMany({ where: { orgId } });
       await db.user.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

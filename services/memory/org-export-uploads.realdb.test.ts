@@ -21,6 +21,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The in-memory blob store: every raw file the tests seed, and every one an import stores. */
 const blobs = vi.hoisted(() => {
@@ -296,7 +297,7 @@ describe.skipIf(!QA_URL)("uploads in the memory export and import, real Postgres
 
   async function reset() {
     await db.memoryChunk.deleteMany({ where: { orgId: { in: ORGS } } });
-    await db.org.deleteMany({ where: { id: { in: ORGS } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ORGS } } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, SALES_MEMBER, GAP_MEMBER] } } });
   }
 

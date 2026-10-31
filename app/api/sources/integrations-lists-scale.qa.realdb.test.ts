@@ -12,6 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { SOURCE_PAGE_SIZE } from "@/lib/source-lists";
 import { ACCOUNT_PAGE_SIZE } from "@/lib/integration-lists";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -64,7 +65,7 @@ describe.skipIf(!QA_URL)("the Integrations lists at 1,000+ rows in two orgs", ()
       for (const t of ["grant", "scope", "user"] as const) {
         await (db[t] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: org } });
       }
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
     }
   }
 

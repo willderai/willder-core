@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -37,7 +38,7 @@ describe.skipIf(!QA_URL)("deleteSourceFileChunks() on a real database", () => {
       await db.memoryChunk.deleteMany({ where: { orgId } });
       await db.source.deleteMany({ where: { orgId } });
     }
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
   }
 
   async function surviving(): Promise<string[]> {

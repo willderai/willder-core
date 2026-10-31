@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: { ingest: vi.fn().mockResolvedValue({ episodeId: "ep-hybrid" }) },
@@ -69,7 +70,7 @@ describe.skipIf(!QA_URL)("conflict read: edges of the current-versions filter", 
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -77,7 +78,7 @@ describe.skipIf(!QA_URL)("conflict read: edges of the current-versions filter", 
     vi.mocked(globalThis.fetch)
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

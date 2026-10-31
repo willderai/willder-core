@@ -18,6 +18,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -116,7 +117,7 @@ describe.skipIf(!QA_URL)("MCP write tools refuse a NUL in scopePath with one den
       await wipe(orgId);
       await db.capability.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
       await db.org.create({ data: { id: orgId, name: orgId } });
       await db.scope.create({ data: { orgId, path: `org_${orgId}`, name: `org_${orgId}` } });
     }
@@ -151,7 +152,7 @@ describe.skipIf(!QA_URL)("MCP write tools refuse a NUL in scopePath with one den
       await wipe(orgId);
       await db.capability.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.$disconnect();
   });

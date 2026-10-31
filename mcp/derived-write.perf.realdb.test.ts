@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "derivedwriteperf";
@@ -27,7 +28,7 @@ describe.skipIf(!QA_URL || process.env.WILLDER_PERF_TESTS !== "1")("performance:
   beforeAll(async () => {
     process.env.DATABASE_URL = QA_URL;
     db = new PrismaClient({ adapter: new PrismaPg({ connectionString: QA_URL }) });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.$executeRaw`
       INSERT INTO "session_scope_reads" ("orgId", "agentId", "scopePath", "lastReadAt")
@@ -37,7 +38,7 @@ describe.skipIf(!QA_URL || process.env.WILLDER_PERF_TESTS !== "1")("performance:
 
   afterAll(async () => {
     if (!db) return;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

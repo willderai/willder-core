@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // The scoped run counts: the single-agent view's
 // `_count.runs`, which no other test drives, and the property every one of
@@ -168,7 +169,7 @@ describe.skipIf(!QA_URL)("scoped run counts: hidden answers like absent", () => 
 
   afterAll(async () => {
     await clean();
-    await db.org.deleteMany({ where: { id: { in: [ORG, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, ORG_B] } } });
     await db?.$disconnect?.();
   });
 

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graphPlan = vi.fn(async () => []);
 vi.mock("./store", () => ({
@@ -115,7 +116,7 @@ describe.skipIf(!QA_URL)("erasures recorded as applied on every path, real Postg
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   async function addChunk(id: string, content: string, createdAt = new Date()) {

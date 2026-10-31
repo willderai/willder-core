@@ -10,6 +10,7 @@ import { VersionNotStoredError, type StoredDates } from "@/services/memory/pgvec
 import { checkEpisodeCap, recordEpisode } from "@/services/guardrails";
 import type { IngestInput, IngestResult } from "@/types/memory";
 import { resolveEntities } from "@/services/resolver";
+import { personRuleCopyOf, type PersonRuleCopy } from "@/services/memory/person-rule-copy";
 import { announcedOnStore, recordIngestAppliedOnce, type IngestOutcome } from "@/services/memory/fact-change-event";
 import {
   StaleBaseVersionError,
@@ -601,6 +602,8 @@ export interface IngestAck {
    * would have had: nothing was written, so the stored version keeps its own. `occurredAt`
    * is the date its writer stated, or null when it is dated by when it was stored. */
   storedDateKept?: { occurredAt: string | null };
+  /** Set when an agent based this write on the copy of a person's rule: which rule, and the copy it stands beside. */
+  keptBeside?: PersonRuleCopy & { versionId: string };
   /** Where this write's graph extraction stands when the call returns. Absent, it continues
    * in the background (`after()` or the Inngest job). Present when it does not:
    *  - `completed`, `kept`, `failed`: it ran before the call returned, under INNGEST_BYPASS
@@ -754,7 +757,7 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
     // by an earlier ingest. Nothing to write; the caller's retry succeeds like its first attempt did.
     if (based) {
       const current = await currentVersionReplacing(db, data.groupId, writeThrough.episodeId);
-      if (current) throw staleStored(based, writeThrough.episodeId, current);
+      if (current) throw await staleStored(based, writeThrough.episodeId, current);
     }
     if (tracked) {
       const current = await currentVersionReplacing(db, data.groupId, writeThrough.episodeId);
@@ -762,11 +765,14 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
     }
     if (data.confirmDelivery) await markContactIngestDelivered(data.confirmDelivery);
     const kept = storedDateKept(data, writeThrough.existingDates);
+    const rule =
+      based && data.actorType !== "human" ? await personRuleCopyOf(db, data.groupId, based.baseVersion) : null;
     return {
       readableNow: true,
       versionId: writeThrough.episodeId,
       graphExtraction: "earlier",
       ...(kept ? { storedDateKept: kept } : {}),
+      ...(rule ? { keptBeside: { ...rule, versionId: based!.baseVersion } } : {}),
     };
   }
   const stale =
@@ -778,7 +784,7 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
   if (stale && based) {
     // Lost to a newer version while it was being stored: kept, superseded and announced,
     // but never extracted into the graph, where its text could retire the newer version's.
-    throw staleStored(based, stale.storedVersionId, stale.current);
+    throw await staleStored(based, stale.storedVersionId, stale.current);
   }
   if (stale && tracked) {
     // The same, for a write without a base that raced a version its writer had not read.
@@ -789,7 +795,7 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
   // A stored write that skips graph extraction has nothing left for the job to do.
   if (data.skipGraphExtraction && writeThrough.kind === "stored") {
     if (!sameEpisode) await recordEpisode(data.groupId);
-    return { ...storedAck(writeThrough), graphExtraction: "none" };
+    return { ...storedAck(writeThrough, data.baseVersion), graphExtraction: "none" };
   }
 
   let graphExtraction: InlineGraphExtraction | undefined;
@@ -818,7 +824,7 @@ export async function ingestMemory(request: IngestInput): Promise<IngestAck> {
   await recordEpisode(data.groupId);
   const ran = graphExtraction === undefined ? {} : { graphExtraction };
   if (writeThrough.kind !== "stored") return { readableNow: false, ...ran };
-  return { ...storedAck(writeThrough), ...ran };
+  return { ...storedAck(writeThrough, data.baseVersion), ...ran };
 }
 
 /**
@@ -843,11 +849,14 @@ async function keepFailedExtraction(error: unknown): Promise<"kept" | "failed"> 
 }
 
 /** The reply for a write the request path stored: its version, and the one it lost to, if any. */
-function storedAck({ episodeId, outcome }: Extract<WriteThrough, { kind: "stored" }>): IngestAck {
+function storedAck({ episodeId, outcome }: Extract<WriteThrough, { kind: "stored" }>, base?: string): IngestAck {
   return {
     readableNow: true,
     versionId: episodeId,
     ...(outcome.supersededBy === null ? {} : { supersededBy: outcome.supersededBy }),
+    ...(outcome.supersededBy === null && outcome.keptBeside && base
+      ? { keptBeside: { ...outcome.keptBeside, versionId: base } }
+      : {}),
   };
 }
 
@@ -870,15 +879,16 @@ function storedDateKept(data: IngestInput, stored: StoredDates | null): { occurr
 }
 
 /** The refusal for a based write whose stored copy `storedVersionId` is superseded by `current`. */
-function staleStored(
+async function staleStored(
   data: IngestInput & { baseVersion: string },
   storedVersionId: string,
   current: string,
-): StaleBaseVersionError {
+): Promise<StaleBaseVersionError> {
   const target = basedWriteTarget(data);
+  const rule = await personRuleCopyOf(db, data.groupId, current);
   return new StaleBaseVersionError(
     { entityName: target.entityName, scopePath: target.eventScopePath },
-    { baseVersionId: data.baseVersion, currentVersionId: current, storedVersionId },
+    { baseVersionId: data.baseVersion, currentVersionId: current, storedVersionId, ...(rule ? { rule } : {}) },
   );
 }
 

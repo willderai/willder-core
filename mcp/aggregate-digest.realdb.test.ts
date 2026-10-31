@@ -19,6 +19,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { RETRIEVAL_AGGREGATE_DIGEST_FLAG } from "@/services/memory/aggregate-digest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -194,7 +195,7 @@ describe.skipIf(!QA_URL)("memory_query's aggregate digest, on a real read", { ti
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, HOBBY, HOBBY_FORGET, SIBLING])
       await db.scope.create({ data: { orgId: ORG, path, name: path.split(".").at(-1)! } });
@@ -218,7 +219,7 @@ describe.skipIf(!QA_URL)("memory_query's aggregate digest, on a real read", { ti
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

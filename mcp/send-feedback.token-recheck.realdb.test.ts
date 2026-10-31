@@ -13,6 +13,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -54,7 +55,7 @@ describe.skipIf(!QA_URL)("send_feedback after its session's token stops being li
   });
 
   beforeEach(async () => {
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     token = `wcap_test_${Math.random().toString(36).slice(2)}`;
     capabilityId = (
@@ -72,7 +73,7 @@ describe.skipIf(!QA_URL)("send_feedback after its session's token stops being li
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

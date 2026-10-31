@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const SESSION_TIME_ZONES = ["America/Los_Angeles", "Asia/Tokyo"];
@@ -31,7 +32,7 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)("the audit and usage range on 
   async function clear() {
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
     await db.artifactUsage.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {

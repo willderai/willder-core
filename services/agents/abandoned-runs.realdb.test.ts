@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // A run whose driver died between steps (a timeout, a crash, a redeploy) keeps
 // `status = running` for good unless something else ends it. Production had four
@@ -111,7 +112,7 @@ describe.skipIf(!QA_URL)("abandoned agent runs", { timeout: 30_000 }, () => {
   afterAll(async () => {
     await db?.agentRun.deleteMany({ where: { orgId: ORG } });
     await db?.agent.deleteMany({ where: { orgId: ORG } });
-    await db?.org.deleteMany({ where: { id: ORG } });
+    if (db) await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db?.$disconnect?.();
   });
 

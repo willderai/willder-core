@@ -10,6 +10,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "au3org";
@@ -33,7 +34,7 @@ describe.skipIf(!QA_URL)("the audit timeline export carries AU-3's fields, real 
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {

@@ -32,6 +32,7 @@ import { sqlUtcNow } from "@/lib/sql-utc-now";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
@@ -200,14 +201,14 @@ describe.skipIf(!QA_URL)("a row stored under a fact's name is a version only whe
   afterAll(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
   beforeEach(async () => {
     vi.mocked(globalThis.fetch)
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

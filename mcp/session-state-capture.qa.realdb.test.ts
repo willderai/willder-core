@@ -19,6 +19,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import { init } from "@/cli/willder.mjs";
 import { sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -139,7 +140,7 @@ describe.skipIf(!QA_URL)("session-state capture lands only on the session's own 
       [ORG_A, [`org_${ORG_A}`, WEB_A, OPS_A]],
       [ORG_B, [`org_${ORG_B}`, WEB_B]],
     ] as const) {
-      await db.org.deleteMany({ where: { id: org } });
+      await deleteOrgsWithRetry(db, { where: { id: org } });
       await db.org.create({ data: { id: org, name: org } });
       for (const path of paths) await db.scope.create({ data: { orgId: org, path, name: path } });
     }
@@ -160,7 +161,7 @@ describe.skipIf(!QA_URL)("session-state capture lands only on the session's own 
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    for (const org of [ORG_A, ORG_B]) await db.org.deleteMany({ where: { id: org } });
+    for (const org of [ORG_A, ORG_B]) await deleteOrgsWithRetry(db, { where: { id: org } });
     await db.$disconnect();
     rmSync(projectDir, { recursive: true, force: true });
     rmSync(stateTmp, { recursive: true, force: true });

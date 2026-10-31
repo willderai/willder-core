@@ -12,6 +12,7 @@
 //
 // Set QA_DATABASE_URL to an isolated test database; the suite skips without it.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // The connect's widening gate has its own tests (app/api/sources/route.widening.realdb.test.ts).
 // Here the source reports anyone can read it, so connects widen nothing and these
@@ -76,7 +77,7 @@ describe.skipIf(!QA_URL)("narrowing reconnect: old-scope feed over HTTP", () => 
         else await m.deleteMany({ where: { orgId } });
       }
     }
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
   }
 
   async function tokenOn(orgId: string, scopePath: string, agentId: string) {

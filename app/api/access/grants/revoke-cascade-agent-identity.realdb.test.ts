@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-agent-identity";
@@ -47,7 +48,7 @@ describe.skipIf(!QA_URL)("agent grant revoke reaches tokens across identifier fo
     await db.agent.deleteMany({ where: { orgId: orgs } });
     await db.scope.deleteMany({ where: { orgId: orgs } });
     await db.user.deleteMany({ where: { orgId: orgs } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   }
 
   beforeEach(async () => {
@@ -241,7 +242,7 @@ describe.skipIf(!QA_URL)("backfill migration 20260924_agent_grantee_canonical_ke
     await db.grant.deleteMany({ where: { orgId: orgs } });
     await db.agent.deleteMany({ where: { orgId: orgs } });
     await db.scope.deleteMany({ where: { orgId: orgs } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
 
     await db.org.create({ data: { id: ORG, name: "agent identity" } });
     scopeId = (await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "sales" } })).id;
@@ -257,7 +258,7 @@ describe.skipIf(!QA_URL)("backfill migration 20260924_agent_grantee_canonical_ke
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.agent.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

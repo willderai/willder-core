@@ -19,6 +19,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
@@ -215,7 +216,7 @@ describe.skipIf(!QA_URL)("a read one store could not answer says so", () => {
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
@@ -261,7 +262,7 @@ describe.skipIf(!QA_URL)("a read one store could not answer says so", () => {
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.$disconnect();
   });

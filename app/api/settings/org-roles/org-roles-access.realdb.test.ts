@@ -26,6 +26,7 @@
 // Set QA_DATABASE_URL to an ISOLATED test database. Never a live one.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Org, PrismaClient, User } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const IMPORT_TIMEOUT_MS = 60_000;
@@ -71,7 +72,7 @@ describe.skipIf(!QA_URL)("org role registry: an org admin role and an org-root d
     await db.grant.deleteMany({ where: { orgId: ORGS } });
     await db.scope.deleteMany({ where: { orgId: ORGS } });
     await db.user.deleteMany({ where: { id: USERS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
   }
 
   /** The audit rows `actorId` has written in `orgId`, oldest first. */

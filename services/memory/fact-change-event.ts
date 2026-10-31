@@ -40,6 +40,7 @@ import { resolveFactContention } from "./conflict";
 import { correctionTitle } from "./correction-names";
 import { recordReplacements } from "./edges";
 import { recordBasedWrite } from "./fact-update";
+import type { PersonRuleCopy } from "./person-rule-copy";
 import { recordUnbasedWrite } from "./fact-reads";
 import type { VersionTransaction } from "./pgvector-store";
 
@@ -47,9 +48,12 @@ import type { VersionTransaction } from "./pgvector-store";
  * What announcing one ingest decided about the version it stored: current, or superseded
  * by `supersededBy` because its writer had not read that version (`stale-read`) or because
  * another writer stored a version of the fact first inside the contention window
- * (`conflict`).
+ * (`conflict`). `keptBeside` names the person's rule whose copy an agent based this version on:
+ * the version is current, and replaced nothing.
  */
-export type IngestOutcome = { supersededBy: null } | { supersededBy: string; cause: "stale-read" | "conflict" };
+export type IngestOutcome =
+  | { supersededBy: null; keptBeside?: PersonRuleCopy }
+  | { supersededBy: string; cause: "stale-read" | "conflict" };
 
 /**
  * Record that one ingest was applied: the confirmed-applied audit row and the fact's
@@ -222,7 +226,7 @@ async function settleIngest(
   // Matched exactly as stored: the store writes `name` as given.
   const entityName = input.name;
   if (input.baseVersion !== undefined && entityName?.trim()) {
-    const { supersededBy } = await recordBasedWrite(tx, {
+    const { supersededBy, keptBeside } = await recordBasedWrite(tx, {
       orgId: input.groupId,
       versionId: episodeId,
       baseVersionId: input.baseVersion,
@@ -231,7 +235,8 @@ async function settleIngest(
       eventScopePath: scopePath,
       origin: input.origin,
     });
-    return supersededBy ? { supersededBy, cause: "stale-read" } : { supersededBy: null };
+    if (supersededBy) return { supersededBy, cause: "stale-read" };
+    return keptBeside ? { supersededBy: null, keptBeside } : { supersededBy: null };
   }
   if (input.readsTracked && entityName?.trim()) {
     const supersededBy = await recordUnbasedWrite(tx, {

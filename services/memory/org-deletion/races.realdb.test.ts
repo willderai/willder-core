@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -113,7 +114,7 @@ describe.skipIf(!QA_URL)("org deletion edges and races, real Postgres", { timeou
   let run: typeof import("./run");
 
   async function reset() {
-    await db.org.deleteMany({ where: { id: A } });
+    await deleteOrgsWithRetry(db, { where: { id: A } });
     await db.user.deleteMany({ where: { id: { in: PEOPLE } } });
     await db.orgDeletion.deleteMany({ where: { orgId: A } });
     blobs.clear();

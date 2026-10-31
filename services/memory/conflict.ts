@@ -432,6 +432,10 @@ async function versionsInWindow(
           JOIN "fact_version_reads" r
             ON r."orgId" = v."orgId" AND r."versionId" = v."id" AND r."agentId" = w."actorId"
           WHERE w."actorType" = 'agent' AND NOT r."sightingOnly" AND r."readAt" <= w."receivedAt"
+          -- A version kept beside a person's rule copy names it as what it was written from.
+          UNION
+          SELECT w."id" FROM in_window w
+          JOIN "fact_edges" d ON d."orgId" = v."orgId" AND d."toId" = v."id" AND d."fromId" = w."id" AND d."kind" = 'derivedFrom'
         ) AS "readBeforeStoring"
       FROM in_window v
     )

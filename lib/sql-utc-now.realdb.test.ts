@@ -24,6 +24,7 @@ import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access/check";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const SESSION_TIME_ZONES = ["America/Los_Angeles", "Asia/Tokyo"];
@@ -117,7 +118,7 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)(
       await db.capability.deleteMany({ where: { orgId: ORG } });
       await db.grant.deleteMany({ where: { orgId: ORG } });
       await db.scope.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.org.create({ data: { id: ORG, name: ORG } });
       rootScopeId = (await db.scope.create({ data: { orgId: ORG, path: ROOT, name: "root" } })).id;
       // check() reads a person's access through their membership of the org.
@@ -128,7 +129,7 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)(
 
     afterAll(async () => {
       if (!db) return;
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
     });
 

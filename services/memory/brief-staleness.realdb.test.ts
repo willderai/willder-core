@@ -24,6 +24,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { FindFactByIdInput, IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The graph double's state: fact id to its text, and the episode each fact came from. */
 const graph = vi.hoisted(() => ({
@@ -179,7 +180,7 @@ describe.skipIf(!QA_URL)("a brief reads stale exactly when what it was derived f
 
   beforeEach(async () => {
     graph.facts.clear();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.createMany({ data: [ROOT, ENG].map((path) => ({ orgId: ORG, path, name: path })) });
     await db.source.createMany({

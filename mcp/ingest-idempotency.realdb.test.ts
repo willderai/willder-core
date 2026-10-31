@@ -33,6 +33,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // singleton at import time, before beforeAll points DATABASE_URL at the QA database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: { ingest: vi.fn().mockResolvedValue({ episodeId: "ep-hybrid" }) },
@@ -119,7 +120,7 @@ describe.skipIf(!QA_URL)("memory_ingest with an idempotency key, against a real 
 
   afterAll(async () => {
     await Promise.all(openClients.splice(0).map((client) => client.close()));
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
     vi.unstubAllGlobals();
   });
@@ -128,7 +129,7 @@ describe.skipIf(!QA_URL)("memory_ingest with an idempotency key, against a real 
     await Promise.all(openClients.splice(0).map((client) => client.close()));
     jobs = [];
     send = async () => undefined;
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const id of [ORG, OTHER_ORG]) await db.org.create({ data: { id, name: id } });
   });
 

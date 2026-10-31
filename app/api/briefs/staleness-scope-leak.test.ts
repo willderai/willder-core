@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-scope-leak-f1";
@@ -36,7 +37,7 @@ describe.skipIf(!QA_URL)("staleness changes do not leak without a covering grant
     for (const m of ["auditLog", "brief", "grant", "scope", "user"] as const) {
       await (db[m] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: ORG } });
     }
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "QA f1" } });
     await db.user.create({
       data: { id: READER, orgId: ORG, email: "f1@qa.test", role: "member", clerkId: "clerk-f1" },
@@ -83,7 +84,7 @@ describe.skipIf(!QA_URL)("staleness changes do not leak without a covering grant
     for (const m of ["auditLog", "brief", "grant", "scope", "user"] as const) {
       await (db[m] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: ORG } });
     }
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

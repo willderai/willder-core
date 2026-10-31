@@ -39,6 +39,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { CONFLICT_OPENING, TASK_START_PREMISE_CHECK } from "./task-start-headings";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
@@ -298,7 +299,7 @@ describe.skipIf(!QA_URL)("a second agent continuing a task starts from what the 
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, WEB, WEB_INTERNAL, FINANCE])
       await db.scope.create({ data: { orgId: ORG, path, name: path } });
@@ -412,7 +413,7 @@ describe.skipIf(!QA_URL)("a second agent continuing a task starts from what the 
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -603,7 +604,7 @@ describe.skipIf(!QA_URL)("task-start task sections serve only what the reader ma
     await db.memoryChunk.deleteMany({ where: { orgId: ORGS } });
     await db.convention.updateMany({ where: { orgId: ORGS }, data: { supersedesId: null } });
     await db.convention.deleteMany({ where: { orgId: ORGS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
   }
 
   beforeAll(async () => {

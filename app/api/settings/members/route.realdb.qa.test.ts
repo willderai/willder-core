@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG_A = "smclerka";
@@ -23,7 +24,7 @@ describe.skipIf(!QA_URL)(
 
     async function clean() {
       await db.user.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-      await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+      await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     }
 
     beforeAll(async () => {

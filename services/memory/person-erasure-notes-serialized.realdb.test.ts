@@ -15,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("./store", () => ({
   memory: { ingest: vi.fn() },
@@ -119,7 +120,7 @@ describe.skipIf(!QA_URL)(
     afterAll(async () => {
       if (!db) return;
       await wipe();
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
       await other.$disconnect();
     });

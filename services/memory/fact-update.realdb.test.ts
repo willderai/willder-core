@@ -24,6 +24,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
@@ -193,7 +194,7 @@ describe.skipIf(!QA_URL)("a write-back from a stale read never replaces a newer 
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -202,7 +203,7 @@ describe.skipIf(!QA_URL)("a write-back from a stale read never replaces a newer 
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
     vi.mocked((await import("@/lib/inngest")).inngest.send).mockClear();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });
@@ -644,6 +645,17 @@ describe.skipIf(!QA_URL)("a write-back from a stale read never replaces a newer 
     );
     // The same reply tells A what changed since its read, before it tries again.
     expect(textOf(back)).toContain(`supersede fact ${read} by writer-b`);
+    // And carries the winning version whole, its writer named, so A needs no other read.
+    const { CURRENT_VERSION_HEADING } = await import("@/mcp/tools/memory-ingest");
+    expect(textOf(back)).toContain(`${CURRENT_VERSION_HEADING}\nfact ${fromB} (current)`);
+    expect(textOf(back)).toContain("written by writer-b at ");
+    expect(textOf(back)).toContain("The release train leaves on Tuesday.");
+    expect(textOf(back)).toMatch(
+      /Your change is yours to settle: if it still applies, write it again with baseVersion \S+, keeping what \S+ added; if \S+ already covers it, leave \S+ as it stands\./,
+    );
+    // And the version it was based on, so A can see what B added without another read.
+    const { BASE_VERSION_HEADING } = await import("@/mcp/tools/memory-ingest");
+    expect(textOf(back)).toContain(`${BASE_VERSION_HEADING}\nfact ${read} (superseded)`);
     expect(textOf(await b.get("memory_version")!({ versionId: fromB }))).toContain(`fact ${fromB} (current)`);
     const refusedBase = await ingest(a, "The release train leaves on Friday.", "no-such-version");
     expect(refusedBase.content[0]!.text).toMatch(/^unknown_version: /);

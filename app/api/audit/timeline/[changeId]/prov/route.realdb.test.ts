@@ -23,6 +23,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { PROV_PYTHON, validateProv } from "@/services/audit/prov-validator.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
@@ -79,7 +80,7 @@ describe.skipIf(!QA_URL || !PROV_PYTHON)("PROV-JSON export of a change, real Pos
     await db.grant.deleteMany({ where: { orgId } });
     await db.scope.deleteMany({ where: { orgId } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, MEMBER, LEAD, SELLER, ENGINEER] } } });
-    await db.org.deleteMany({ where: { id: orgId } });
+    await deleteOrgsWithRetry(db, { where: { id: orgId } });
   };
 
   beforeAll(async () => {

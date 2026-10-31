@@ -36,6 +36,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { NoRelationMemoryService } from "./no-relation-memory-service.testsupport";
 import { mcpSession, type ToolAnswer } from "./mcp-session.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -144,7 +145,7 @@ describe.skipIf(!QA_URL)("derived writes: an agent that reads scope A and writes
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, DEALS, ALL_STAFF, BOARD, TOWN_HALL]) {
       const scope = await db.scope.create({ data: { orgId: ORG, path, name: path.split(".").at(-1)! } });
@@ -177,7 +178,7 @@ describe.skipIf(!QA_URL)("derived writes: an agent that reads scope A and writes
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

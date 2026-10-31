@@ -6,6 +6,7 @@ import { resolveCallerScopePath } from "@/services/access";
 import { guardedMemory } from "@/services/memory";
 import { IF_REVISION_DESCRIPTION, IF_REVISION_MAX_LENGTH, withRevisionReceipt } from "../revision-receipt";
 import { recordServedFacts, recordServedScopes, toolError, type ToolContext } from "./tool-context";
+import { servedDays } from "../fact-citation";
 
 export function registerMemoryEntity(server: McpServer, { ctx, cap, notifyingRead: notifying }: ToolContext): void {
   server.registerTool(
@@ -28,7 +29,12 @@ export function registerMemoryEntity(server: McpServer, { ctx, cap, notifyingRea
         // "Not found" is not given a revision: it is also what a hidden entity reads
         // as, and a receipt adds nothing to a four-word answer.
         if (!entity) return { content: [{ type: "text" as const, text: "Entity not found." }] };
-        const facts = (entity.facts ?? []).map((f) => `• ${f.fact}`).join("\n") || "(no facts)";
+        // Each fact ends with the day it is dated by, as memory_query dates it (mcp/fact-citation.ts),
+        // so an earlier statement on the entity is told from a later one.
+        const days = await servedDays(ctx.orgId, entity.facts ?? []);
+        const facts =
+          (entity.facts ?? []).map((f, i) => `• ${f.fact}${days[i] ? ` (as of ${days[i]})` : ""}`).join("\n") ||
+          "(no facts)";
         // These facts' text is a read like memory_query's: record the versions behind
         // them so this agent's next write about them is checked against what it saw.
         await recordServedFacts(cap, entity.facts ?? [], target);

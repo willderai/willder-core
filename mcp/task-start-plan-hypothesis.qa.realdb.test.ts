@@ -22,6 +22,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import { renderSessionState, sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
 import { TASK_START_HEADINGS } from "./task-start-headings";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -159,7 +160,7 @@ describe.skipIf(!QA_URL)("the untested-plan label against the task-start read li
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, WEB]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
     tokens.a = await mint("handoff-agent-a", "write");
@@ -171,7 +172,7 @@ describe.skipIf(!QA_URL)("the untested-plan label against the task-start read li
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

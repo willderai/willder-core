@@ -29,6 +29,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { DriveFile } from "@/services/connectors/gdrive";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Ingest jobs queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -254,7 +255,7 @@ describe.skipIf(!QA_URL)("an imported file's text is not a version of a fact nam
   afterAll(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
   beforeEach(async () => {
@@ -262,7 +263,7 @@ describe.skipIf(!QA_URL)("an imported file's text is not a version of a fact nam
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
     queuedJobs.length = 0;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "planning" } });

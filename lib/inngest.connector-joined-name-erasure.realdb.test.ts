@@ -18,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The graph store: live episodes by scope, numbered per org. */
 const graph = vi.hoisted(() => {
@@ -204,7 +205,7 @@ describe.skipIf(!QA_URL)("an erased person's name written without spaces is foun
       await db.memoryChunk.deleteMany({ where: { orgId } });
       await db.erasureSuppression.deleteMany({ where: { orgId } });
       await db.auditLog.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.user.deleteMany({ where: { id: { in: [ADMIN, OTHER_ADMIN] } } });
   }

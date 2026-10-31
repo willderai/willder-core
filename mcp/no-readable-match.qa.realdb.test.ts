@@ -30,6 +30,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { NO_READABLE_MATCH_NOTE, UNHELD_VALUES_META_KEY } from "./read-notes";
 import { specificValuesIn, type SpecificValue } from "@/services/memory/specific-values";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -233,7 +234,7 @@ describe.skipIf(!QA_URL)("the no-readable-match note is no oracle, at volume", (
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const [orgId, paths] of [
       [
         ORG,
@@ -290,7 +291,7 @@ describe.skipIf(!QA_URL)("the no-readable-match note is no oracle, at volume", (
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

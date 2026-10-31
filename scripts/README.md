@@ -30,7 +30,7 @@ Run directly (no npm alias, each needs live credentials in `.env`):
 
 | Script | What it probes |
 |---|---|
-| `npx tsx scripts/check-app-shell-width.ts` | The deployed app shell renders at the documented width (`CHECK_BASE_URL`, `CHECK_PATH`, `CHROMIUM_PATH` — see `docs/environment.md`) |
+| `npx tsx scripts/check-app-shell-width.ts` | The deployed app shell renders at the documented width (`CHECK_BASE_URL`, `CHECK_PATH`, `CHECK_STORAGE_STATE`, `CHROMIUM_PATH` — see `docs/environment.md`) |
 | `npx tsx scripts/list-connected-mailboxes.ts` | Read-only: lists connected Gmail/Outlook rows (internal ids, never the address) and any inbox watch still live, ahead of revoking grants made before mailbox permissions were cut to identity only. Needs `DATABASE_URL` |
 
 Notes:

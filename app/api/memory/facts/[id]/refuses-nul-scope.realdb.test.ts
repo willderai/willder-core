@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "nulscope";
@@ -89,7 +90,7 @@ describe.skipIf(!QA_URL)("PATCH and DELETE /api/memory/facts/:id refuse a NUL in
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "NUL scope" } });
     await db.user.create({
       data: { id: ADMIN, orgId: ORG, email: `${ADMIN}@nulscope.test`, role: "admin", clerkId: `clerk-${ADMIN}` },
@@ -105,7 +106,7 @@ describe.skipIf(!QA_URL)("PATCH and DELETE /api/memory/facts/:id refuse a NUL in
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

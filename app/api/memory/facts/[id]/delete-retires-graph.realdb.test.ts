@@ -26,6 +26,7 @@ import neo4j, { type Driver } from "neo4j-driver";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { toGid } from "@/services/memory/graphiti-store";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const SERVICE_URL = process.env.MEMORY_SERVICE_TEST_URL;
@@ -121,7 +122,7 @@ describe.skipIf(!ENABLED)("DELETE /api/memory/facts/:id retires the fact from th
     await db.grant.deleteMany({ where: { orgId: { in: orgs } } });
     await db.scope.deleteMany({ where: { orgId: { in: orgs } } });
     await db.user.deleteMany({ where: { orgId: { in: orgs } } });
-    await db.org.deleteMany({ where: { id: { in: orgs } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: orgs } } });
   }
 
   beforeAll(async () => {

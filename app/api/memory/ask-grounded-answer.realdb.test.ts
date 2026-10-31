@@ -18,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { stubMemoryService, textEmbedding } from "@/tests/support/memory-service-double.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The signed-in person the route sees. */
 const session = vi.hoisted(() => ({ current: null as unknown }));
@@ -132,14 +133,14 @@ describe.skipIf(!QA_URL)("Ask sends only answers its served facts support", () =
 
   afterAll(async () => {
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllGlobals();
   });
 
   beforeEach(async () => {
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "Ask grounded answer" } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     const person = await db.user.create({

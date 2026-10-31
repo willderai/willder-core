@@ -22,6 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "./member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -71,7 +72,7 @@ describe.skipIf(!QA_URL)("check() names the agent's own live token on its audit 
     await db.capability.deleteMany({ where: { orgId: orgs } });
     await db.grant.deleteMany({ where: { orgId: orgs } });
     await db.scope.deleteMany({ where: { orgId: orgs } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
 
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.org.create({ data: { id: OTHER_ORG, name: OTHER_ORG } });

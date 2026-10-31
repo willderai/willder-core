@@ -26,7 +26,7 @@ export function registerMemoryVersion(server: McpServer, { ctx, cap, notifyingRe
     {
       title: "Read one version by id",
       description:
-        "Fetch one stored version of a fact or a rule by its id — the id a change notice gives you when another agent's write superseded yours, or when your own write lost a race. Says whether the version is current, superseded or retired, and by what. Access-scoped and audited.",
+        "Fetch one stored version of a fact or a rule by its id — the id a change notice gives you when another agent's write superseded yours, or when your own write lost a race. Says whether the version is current, superseded or retired, and by what, with the date of each version it names (what a fact said before and when it changed). Access-scoped and audited.",
       inputSchema: {
         versionId: z
           .string({ required_error: MISSING_VERSION_ID, invalid_type_error: MISSING_VERSION_ID })
@@ -51,18 +51,43 @@ export function registerMemoryVersion(server: McpServer, { ctx, cap, notifyingRe
   );
 }
 
+/** A date as the version's lineage states it: the day in UTC, 2026-10-01. */
+const utcDay = (at: Date) => at.toISOString().slice(0, 10);
+
 /** One version as plain lines, so a model can read it without parsing anything. Also the text
  * of a `willder://version/{versionId}` resource (mcp/resources.ts). */
 export function describeVersion(version: MemoryVersion, shared: string | undefined): string {
+  // A fact its writer dated (memory_ingest's occurredAt) is also served with that date, the one
+  // memory_query gives it, when it falls on another day than the write.
+  const occurred =
+    version.occurredAt && utcDay(version.occurredAt) !== utcDay(version.createdAt)
+      ? `, as of ${utcDay(version.occurredAt)}`
+      : "";
   const lines = [
     `${version.kind} ${version.id} (${version.status})`,
     `scope: ${version.scopePath}`,
-    `written by ${version.actorId ?? "unknown"} at ${version.createdAt.toISOString()}`,
+    `written by ${version.actorId ?? "unknown"} at ${version.createdAt.toISOString()}${occurred}`,
   ];
   // A declared share's marker (mcp/derived-write.ts): names the source only to a reader of it.
   if (shared) lines.push(shared);
-  if (version.supersededById) lines.push(`superseded by: ${version.supersededById}`);
-  if (version.supersedesIds.length > 0) lines.push(`supersedes: ${version.supersedesIds.join(", ")}`);
+  // Each version the lineage names is dated as a day in UTC (2026-10-01), by the date memory_query
+  // serves it with, so a reader can say when a value changed without opening every version; an
+  // id whose date is not known is named alone. A replacement recorded on another day than its
+  // own date (a dated import of history) says both.
+  const asOf = (id: string) => {
+    const at = version.lineageDatedAt?.[id];
+    return at ? ` (as of ${utcDay(at)})` : "";
+  };
+  if (version.supersededById) {
+    const dated = version.lineageDatedAt?.[version.supersededById];
+    const recorded =
+      version.supersededAt && (!dated || utcDay(dated) !== utcDay(version.supersededAt))
+        ? `, recorded ${utcDay(version.supersededAt)}`
+        : "";
+    lines.push(`superseded by: ${version.supersededById}${asOf(version.supersededById)}${recorded}`);
+  }
+  if (version.supersedesIds.length > 0)
+    lines.push(`supersedes: ${version.supersedesIds.map((id) => `${id}${asOf(id)}`).join(", ")}`);
   lines.push("", version.content);
   return lines.join("\n");
 }

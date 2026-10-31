@@ -16,6 +16,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const API_KEY = "phx_step_state_tenant";
 
@@ -83,7 +84,7 @@ describe.skipIf(!QA_URL)("connector sync credential loader", () => {
 
   const cleanup = async () => {
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
   };
 
   afterAll(async () => {

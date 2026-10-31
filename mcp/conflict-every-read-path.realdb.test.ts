@@ -42,6 +42,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput, MemoryEdge, MemoryFact, StoresOverview } from "@/types/memory";
 import type { Change } from "@/services/memory/change-feed";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -309,7 +310,7 @@ describe.skipIf(!QA_URL)("one current version on every read path after a race", 
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
@@ -371,7 +372,7 @@ describe.skipIf(!QA_URL)("one current version on every read path after a race", 
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
     await db.$disconnect();
   });

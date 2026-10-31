@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // run-visibility.ts states one rule about who may see a run, in two forms:
 // runVisibleUnder() filters rows already in memory, and runVisibleUnderSql()
@@ -106,7 +107,7 @@ describe.skipIf(!QA_URL)("runVisibleUnderSql agrees with runVisibleUnder", { tim
   afterAll(async () => {
     await db.$executeRawUnsafe(`DELETE FROM "agent_runs" WHERE "orgId" = $1`, ORG);
     await db.$executeRawUnsafe(`DELETE FROM "agents" WHERE "orgId" = $1`, ORG);
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db?.$disconnect?.();
   });
 

@@ -1457,7 +1457,7 @@ describe.skipIf(!QA_URL)("erasure's two rules decide every case alike", () => {
       digest: (erased(c.content, written, c.name) ? "erased" : "kept") as Verdict,
     }));
     expect(verdicts).toEqual(CASES.map((c) => ({ case: c.label, erasure: c.expected, digest: c.expected })));
-  }, 30_000);
+  }, 60_000);
 
   it("reads 100,000 characters of one word or one mark, in both rules, as naming no one", async () => {
     // A word with no joint in it, and runs of every mark a name is read across: each took

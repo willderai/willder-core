@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -120,7 +121,7 @@ describe.skipIf(!QA_URL)("an agent token is allowed only where it covers (real d
     await db.grant.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.capability.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.user.deleteMany({ where: { id: PERSON } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

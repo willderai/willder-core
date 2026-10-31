@@ -13,6 +13,7 @@ import { join, relative, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 // Routes that authenticate with the Clerk sign-in alone (org deletion's, which work after
@@ -107,7 +108,7 @@ describe.skipIf(!QA_URL)("each refusal leaves exactly one deny row (real databas
     // Deleting the org removes its audit rows through the one cascade the
     // append-only trigger allows.
     await db.user.deleteMany({ where: { id: MEMBER } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

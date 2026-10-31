@@ -15,6 +15,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 
@@ -134,7 +135,7 @@ describe.skipIf(!QA_URL)("dependency graph: an erased relation answers like one 
   afterAll(async () => {
     if (!QA_URL) return;
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: READER } });
     await db.$disconnect();
   });

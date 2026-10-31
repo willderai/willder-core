@@ -15,6 +15,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("./store", () => ({
   memory: { ingest: vi.fn() },
@@ -68,7 +69,7 @@ describe.skipIf(!QA_URL)("the served-vs-used log under person erasure", () => {
       await db.grant.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
       await db.user.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

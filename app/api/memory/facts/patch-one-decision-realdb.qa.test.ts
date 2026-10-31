@@ -26,6 +26,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { Permission } from "@/lib/generated/prisma/enums";
 import type { MemoryStore } from "@/services/memory/memory-store";
 import type { RemoveFactInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -98,7 +99,7 @@ describe.skipIf(!QA_URL)("PATCH /api/memory/facts/:id: one audited decision per 
     await db.grant.deleteMany({ where: { orgId: { in: orgs } } });
     await db.scope.deleteMany({ where: { orgId: { in: orgs } } });
     await db.user.deleteMany({ where: { orgId: { in: orgs } } });
-    await db.org.deleteMany({ where: { id: { in: orgs } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: orgs } } });
 
     for (const id of orgs) await db.org.create({ data: { id, name: `QA patch ${id}` } });
     const users: [string, string, "admin" | "member"][] = [
@@ -131,7 +132,7 @@ describe.skipIf(!QA_URL)("PATCH /api/memory/facts/:id: one audited decision per 
     await db.grant.deleteMany({ where: { orgId: { in: orgs } } });
     await db.scope.deleteMany({ where: { orgId: { in: orgs } } });
     await db.user.deleteMany({ where: { orgId: { in: orgs } } });
-    await db.org.deleteMany({ where: { id: { in: orgs } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: orgs } } });
     await db.$disconnect();
   });
 

@@ -40,6 +40,7 @@ import { init } from "@/cli/willder.mjs";
 import { EmptyGraphMemoryService } from "@/mcp/memory-service-stub.testsupport";
 import { TASK_START_HEADER, TASK_START_HEADINGS, TASK_START_OBSERVED_LABEL } from "@/mcp/task-start-headings";
 import { HANDOFF_PARTS, handoffParts } from "@/services/memory/session-handoff";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -223,7 +224,7 @@ describe.skipIf(!QA_URL)(
       origin = new URL(server.url).origin;
       closeServer = server.close;
 
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.org.create({ data: { id: ORG, name: ORG } });
       for (const path of [ROOT, WEB, WEB_INTERNAL]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
       tokens.a = await mint("boundary-agent-a", "write");
@@ -248,7 +249,7 @@ describe.skipIf(!QA_URL)(
       await Promise.all(clients.map((client) => client.close()));
       await closeServer?.();
       await service.stop();
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
       rmSync(projectDir, { recursive: true, force: true });
       rmSync(stateTmp, { recursive: true, force: true });

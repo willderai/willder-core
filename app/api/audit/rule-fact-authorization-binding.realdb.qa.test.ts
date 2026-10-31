@@ -24,6 +24,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
 const session = vi.hoisted(() => ({ current: null as unknown }));
@@ -200,7 +201,7 @@ describe.skipIf(!QA_URL)("a rule's fact names the rule's own decision, for this 
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await db.$disconnect();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -209,7 +210,7 @@ describe.skipIf(!QA_URL)("a rule's fact names the rule's own decision, for this 
   beforeEach(async () => {
     queuedJobs.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await seedOrg(ORG_A, ROOT_A, [
       [A_PLAN, "planning"],
       [A_PLAN_DEALS, "deals"],

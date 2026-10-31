@@ -23,6 +23,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graphPlan = vi.fn(async (_input?: unknown) => [] as string[]);
 const graphErase = vi.fn(async (_input?: unknown) => ({
@@ -125,7 +126,7 @@ describe.skipIf(!QA_URL)("QA: the applied-markers lock and the backfill, real Po
     await db.grant.deleteMany({ where: { orgId: org } });
     await db.scope.deleteMany({ where: { orgId: org } });
     await db.user.deleteMany({ where: { orgId: org } });
-    await db.org.deleteMany({ where: { id: org } });
+    await deleteOrgsWithRetry(db, { where: { id: org } });
   }
   async function seed(org: string) {
     await db.org.create({ data: { id: org, name: org } });

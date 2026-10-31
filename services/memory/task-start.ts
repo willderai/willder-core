@@ -73,6 +73,7 @@ import { servedConflicts } from "./served-conflicts";
 import type { ClaimWriter } from "./claim-status";
 import { factRoleTier, factRoleTierSql, type FactRole } from "./fact-roles";
 import { loadErasedContentFilter, type ErasedContentFilter } from "./erasure-suppression";
+import { withoutErasedWinners } from "./superseded-facts";
 import { citedNames, orderRules } from "./rule-order";
 import { SESSION_STATE_NAME_OPENING } from "./session-state";
 import { CLAIM_RETURNING, servedLogInsert } from "./task-start-served";
@@ -343,9 +344,18 @@ export interface TaskStartRead {
    * For each fact version a served write announced that a `supersedes` edge in
    * `fact_edges` has since retired, the version that retired it, keyed by the retired
    * version's id. The shape `supersedingVersions` (services/memory/superseded-facts.ts)
-   * returns, so `markWritesAgainst` marks the writes exactly as the change feed does.
+   * returns, so `markWritesAgainst` marks the writes exactly as the change feed does; null in
+   * place of a version that reads as erased, which is not named.
    */
-  winners: Map<string, string>;
+  winners: Map<string, string | null>;
+  /**
+   * The date each replacement in `winners` is served with, by retired version, as an ISO instant: the date its replacement is
+   * served with (`occurredAt`, else when it was written, as memory_query and memory_version date
+   * it), or the `supersedes` edge's own time when the replacement's row is gone. A served
+   * write's mark says it (`markWritesAgainst`), so a history imported with its dates reads as it
+   * happened, not as the day it was imported.
+   */
+  replacementDatedAt?: Map<string, string>;
   /**
    * The org's suppression list as it stood for this read: when its newest erasure was
    * recorded and how many entries it held, or null when the org never erased anyone. An
@@ -693,6 +703,8 @@ interface WriteRow extends Omit<ServedWrite, "summaryCheckDue" | "ofTask" | "wri
   /** Whether the write was recorded for the task the session names ({@link ServedWrite.ofTask}). */
   ofTask: boolean;
   supersededById: string | null;
+  /** The date `supersededById` is served with, as an ISO instant ({@link TaskStartRead.replacementDatedAt}); null when nothing replaced it. */
+  replacementDatedAt?: string | null;
   /** 1 for the scope's newest write, counting every write the read considered. */
   recency: number;
   /** The created version's text, up to {@link FACT_TEXT_SERVED_CHARS} characters; null for any other write. */
@@ -1190,6 +1202,16 @@ export async function readTaskStartUnchecked(
                     ORDER BY e."createdAt" ASC, e."id" ASC
                     LIMIT 1
                   )
+                END,
+                'replacementDatedAt', CASE
+                  WHEN w."recordType" = ${FACT_RECORD_TYPE} AND w."op" IN ('create', 'update') THEN (
+                    SELECT to_char(COALESCE(r."occurredAt", r."createdAt", e."createdAt"), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                    FROM "fact_edges" e
+                    LEFT JOIN "memory_chunks" r ON r."orgId" = e."orgId" AND r."id" = e."fromId"
+                    WHERE e."orgId" = ${ctx.orgId} AND e."kind" = 'supersedes' AND e."toId" = w."recordId"
+                    ORDER BY e."createdAt" ASC, e."id" ASC
+                    LIMIT 1
+                  )
                 END
               ) ORDER BY w."seq" DESC), '[]'::json)
          FROM (${matchingWrites}) w
@@ -1258,10 +1280,18 @@ export async function readTaskStartUnchecked(
   >(...flattenSql(query));
   const { rules, taskFacts } = row!;
   const taskDecisions = taskDecisionsOf(row!.taskDecisions);
-  const winners = new Map<string, string>();
+  const recorded = new Map<string, string>();
+  const replacementDatedAt = new Map<string, string>();
   for (const write of row!.writes) {
-    if (write.supersededById !== null) winners.set(write.recordId, write.supersededById);
+    if (write.supersededById !== null) recorded.set(write.recordId, write.supersededById);
+    if (write.supersededById !== null && write.replacementDatedAt)
+      replacementDatedAt.set(write.recordId, write.replacementDatedAt);
   }
+  // A replacement that reads as erased is neither named nor dated, as on memory_version and the
+  // change feed (services/memory/superseded-facts.ts withoutErasedWinners): the write is still
+  // served marked as superseded.
+  const winners = await withoutErasedWinners(ctx.orgId, recorded);
+  for (const [loser, winner] of winners) if (winner === null) replacementDatedAt.delete(loser);
   // JSON carries the instant as text. A missing one stays missing, as the column read
   // it before the fold: new Date(null) would invent 1970 and serve it.
   const stale = row!.stale.map((flag) => ({
@@ -1316,6 +1346,7 @@ export async function readTaskStartUnchecked(
       total: row!.liveNoteCount,
     },
     winners,
+    replacementDatedAt,
     erasureMark: row!.erasureMark,
     since: sinceLastSessionOf(row!.since),
   };

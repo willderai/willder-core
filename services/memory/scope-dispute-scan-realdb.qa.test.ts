@@ -23,6 +23,7 @@ import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-qa-137";
@@ -100,7 +101,7 @@ describe.skipIf(!QA_URL)("same-tier dispute de-dup, real Postgres", () => {
   afterAll(async () => {
     if (!QA_URL) return;
     await qa.factDispute.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await qa.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(qa, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await qa.$disconnect();
   });
 

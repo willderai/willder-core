@@ -17,6 +17,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
 import { EmptyGraphMemoryService } from "@/mcp/memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const CLERK_ORG = "qa-selfhost-clerk-org";
@@ -37,7 +38,7 @@ describe.skipIf(!QA_URL)("the self-host bootstrap and CLIs against a real databa
     const orgs = await db.org.findMany({
       where: { OR: [{ clerkOrgId: { in: ["self-hosted", "self-hosted-smoke"] } }, { id: CLERK_ORG }] },
     });
-    await db.org.deleteMany({ where: { id: { in: orgs.map((o) => o.id) } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: orgs.map((o) => o.id) } } });
     await db.user.deleteMany({
       where: { OR: [{ id: READER }, { clerkId: { in: ["self-hosted:operator", "self-hosted-smoke:operator"] } }] },
     });

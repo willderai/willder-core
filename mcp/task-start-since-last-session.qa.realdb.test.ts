@@ -15,6 +15,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { SINCE_LAST_SESSION_OPENING } from "./task-start-headings";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -126,7 +127,7 @@ describe.skipIf(!QA_URL)("QA: the since line under narrowed access, hidden write
 
   afterAll(async () => {
     await clean();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

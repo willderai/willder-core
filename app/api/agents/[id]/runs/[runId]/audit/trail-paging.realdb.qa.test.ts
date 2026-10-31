@@ -17,6 +17,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { COPY_AGENT_ID } from "@/services/access/system-actors";
 import { RUN_TRAIL_PAGE_SIZE } from "@/lib/agent-lists";
 import { encodeListCursor } from "@/lib/list-cursor";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -83,7 +84,7 @@ describe.skipIf(!QA_URL)("run memory trail paging, QA", { timeout: 60_000 }, () 
     for (const t of ["agent", "grant", "scope", "user"] as const) {
       await (db[t] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: ORG } });
     }
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   beforeAll(async () => {

@@ -44,13 +44,18 @@ export interface Change {
   actorId: string;
   /**
    * What changed, in a line. For the write of a fact version that has since lost a
-   * conflict, it starts with `[superseded by <id>]`, so the log lists the write without
-   * presenting its text as the fact's current value.
+   * conflict, it starts with `[superseded by <id>]` (`[superseded]` when that version reads as
+   * erased), so the log lists the write without presenting its text as the fact's current value.
    */
   summary: string;
   createdAt: Date;
-  /** For the write of a fact version since superseded, the version that superseded it; else null. */
+  /**
+   * For the write of a fact version since superseded, the version that superseded it; else null.
+   * Null too when that version reads as erased: it is not named, and `supersededUnnamed` is set.
+   */
   supersededById: string | null;
+  /** Set when the write's version was superseded by a version that reads as erased; the summary starts `[superseded]`. */
+  supersededUnnamed?: true;
 }
 
 export interface ReadChangesOptions {

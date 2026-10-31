@@ -17,6 +17,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { stubEmbeddingService } from "@/services/memory/embedding-service-double.testsupport";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The graph store, reduced to the episodes it holds and the chunk each was stamped with. */
 const graph = vi.hoisted(() => {
@@ -125,7 +126,7 @@ describe.skipIf(!QA_URL)("a queued ingest job leaves no graph episode for a dele
     vi.unstubAllGlobals();
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

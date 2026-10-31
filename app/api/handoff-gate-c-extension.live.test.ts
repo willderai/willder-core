@@ -20,14 +20,26 @@
 // Opt-in only, and it cannot be made to run in CI. C.2b and C.2c read a
 // brief's staleness, which runs the same-tier contradiction scan, and that
 // scan is a real model call (services/facts/conflicts.ts
-// findScopeContradictions). With no provider key that call's catch returns an
-// empty list, so both cases fail on an empty `contradictions` array rather
-// than erroring, and mocking it would make them vacuous — the detection is the
-// behaviour under test. So this suite holds a flag of its own, rather than one
+// findScopeContradictions). Mocking the model would make them vacuous — the
+// detection is the behaviour under test — so they need a model configured
+// (OPENAI_API_KEY, plus OPENAI_BASE_URL / OPENAI_MODEL_ORCHESTRATOR for a local
+// OpenAI-compatible server) and fail with that reason, not on an empty array,
+// when none is. So this suite holds a flag of its own, rather than one
 // that would also hold back app/api/handoff-e2e-lifecycle.live.test.ts, which
 // mocks the agent, makes no model call and does run in CI.
 //
-// Run: HANDOFF_GATE_C_LIVE=1 npx vitest run app/api/handoff-gate-c-extension.live.test.ts
+// What the scan reads is NOT a model: it is the graph view of the brief's scope
+// (guardedMemory.graph), served only for edges a stored memory_chunks row backs
+// (services/memory/graph-fact-sources.ts). ingestMemory is mocked here, so the
+// pipeline never writes those rows and Graphiti never sees the facts; without
+// stand-ins the scan returns [] at "fewer than two edges" before any model is
+// asked, whatever key is set. C.2a therefore writes the two rows the pipeline
+// would store and the Graphiti service (an external HTTP store) is stubbed to
+// return the two edges extracted from them. Everything between — the access
+// gate, tier check, serve-time source check, scan, dispute filing and the
+// staleness response — is the shipping code.
+//
+// Run: HANDOFF_GATE_C_LIVE=1 OPENAI_API_KEY=... npx vitest run app/api/handoff-gate-c-extension.live.test.ts
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const LIVE = process.env.HANDOFF_GATE_C_LIVE === "1";
@@ -89,6 +101,23 @@ import { POST as handoffPOST } from "@/app/api/agents/[id]/handoff/route";
 import { POST as ingestPOST } from "@/app/api/memory/ingest/route";
 import { GET as briefGET } from "@/app/api/briefs/[id]/route";
 import { GET as stalenessGET } from "@/app/api/briefs/[id]/staleness/route";
+import { graphitiStore } from "@/services/memory/store";
+import { toGid } from "@/services/memory/graphiti-store";
+import type { MemoryEdge } from "@/types/memory";
+
+// The edges the Graphiti stub serves (see the header); filled by C.2a.
+const graphEdges: MemoryEdge[] = [];
+const modelConfigured = Boolean(process.env.OPENAI_API_KEY);
+// C.2b and C.2c wait on a real model call, well past vitest's 5 s default.
+const MODEL_TIMEOUT_MS = 120_000;
+function requireModel(test: string) {
+  if (!modelConfigured) {
+    throw new Error(
+      `${test} needs a model for the contradiction scan: set OPENAI_API_KEY ` +
+        "(and OPENAI_BASE_URL / OPENAI_MODEL_ORCHESTRATOR for a local OpenAI-compatible server).",
+    );
+  }
+}
 
 const s = {
   orgId: "",
@@ -119,6 +148,17 @@ const post = (body: unknown) => new Request("http://t", { method: "POST", body: 
 
 describe.skipIf(!LIVE).sequential("Gate C extension — conflicting sources and mid-task narrowing", () => {
   beforeAll(async () => {
+    vi.spyOn(graphitiStore, "graph").mockImplementation(async (input) => {
+      // Callers pass scope paths; Graphiti partitions are their toGid() form.
+      const groups = new Set((input.groupIds ?? [input.groupId]).map(toGid));
+      const edges = graphEdges.filter((e) => groups.has(e.graphGroupId ?? ""));
+      const nodes = [...new Set(edges.flatMap((e) => [e.source, e.target]))].map((uuid) => ({
+        uuid,
+        name: uuid,
+        type: "Entity",
+      }));
+      return { nodes, edges };
+    });
     const org = await db.org.create({ data: { name: "__gate_c_ext_20260919__" } });
     s.orgId = org.id;
     s.root = orgRootPath(org.id);
@@ -225,20 +265,12 @@ describe.skipIf(!LIVE).sequential("Gate C extension — conflicting sources and 
     actAs(s.adminId, "admin");
     // Source A and source B assert incompatible things about the SAME decision.
     // Neither says "supersedes"; neither is newer in any way the product reads.
-    const a = await ingestPOST(
-      post({
-        content: "DECISION-7: the deploy target is Vercel. Confirmed by the platform team.",
-        scope: s.eng,
-        name: "eng-wiki-deploy",
-      }),
-    );
-    const b = await ingestPOST(
-      post({
-        content: "DECISION-7: the deploy target is AWS ECS. Confirmed by the platform team.",
-        scope: s.eng,
-        name: "adr-007-deploy",
-      }),
-    );
+    const assertions = [
+      { name: "eng-wiki-deploy", content: "DECISION-7: the deploy target is Vercel. Confirmed by the platform team." },
+      { name: "adr-007-deploy", content: "DECISION-7: the deploy target is AWS ECS. Confirmed by the platform team." },
+    ];
+    const a = await ingestPOST(post({ content: assertions[0].content, scope: s.eng, name: assertions[0].name }));
+    const b = await ingestPOST(post({ content: assertions[1].content, scope: s.eng, name: assertions[1].name }));
     expect(a.status).toBe(202);
     expect(b.status).toBe(202);
 
@@ -267,71 +299,103 @@ describe.skipIf(!LIVE).sequential("Gate C extension — conflicting sources and 
       });
     }
 
+    // What the same pipeline stores, with ingestMemory mocked: one memory_chunks row
+    // per write, and the graph edge Graphiti extracts from it, stamped with that
+    // row's id. The serve-time source check serves an edge only while such a row is
+    // live, so without the rows the stubbed edges would be (correctly) withheld.
+    for (const [i, { name, content }] of assertions.entries()) {
+      const chunk = await db.memoryChunk.create({
+        data: { orgId: s.orgId, content, actorType: "human", actorId: s.adminId, entityName: name, scopePath: s.eng },
+      });
+      graphEdges.push({
+        uuid: `gatec-edge-${i}`,
+        source: "gatec-node-decision-7",
+        target: `gatec-node-target-${i}`,
+        fact: content,
+        actorType: "human",
+        actorName: s.adminId,
+        scopePath: s.eng,
+        graphGroupId: toGid(s.eng),
+        invalidAt: null,
+        chunkIds: [chunk.id],
+      });
+    }
+
     findings.push(
       `C.2a PASS (by design, was FAIL) — two directly contradictory assertions about DECISION-7 ingest with 202 and open zero FactDispute rows at ingest time. This is the deliberate design decision, not the original bug: a contradiction check on the generic ingest path (lib/inngest.ts memoryIngest) would run on every Slack/Drive/Figma sync and agent fact, not just ones anyone will read through a brief. See C.2b for the read-time fix actually firing.`,
     );
   });
 
-  it("C.2b — reading this brief's staleness detects the same-tier contradiction, opens a real FactDispute, and gives the grantee a distinguishing signal", async () => {
-    actAs(s.granteeId, "member");
-    const body = await (await stalenessGET(new Request("http://t"), params(s.briefId))).json();
-    expect(body.changed).toBe(true);
+  it(
+    "C.2b — reading this brief's staleness detects the same-tier contradiction, opens a real FactDispute, and gives the grantee a distinguishing signal",
+    async () => {
+      requireModel("C.2b");
+      actAs(s.granteeId, "member");
+      const body = await (await stalenessGET(new Request("http://t"), params(s.briefId))).json();
+      expect(body.changed).toBe(true);
 
-    // `changes` itself is only action/target/at and collapses to one target
-    // (the generic ingest path's audit target carries no fact content), so it
-    // cannot carry this signal.
-    const keys = [...new Set(body.changes.flatMap((c: object) => Object.keys(c)))].sort();
-    expect(keys).toEqual(["action", "at", "target"]);
+      // `changes` itself is only action/target/at and collapses to one target
+      // (the generic ingest path's audit target carries no fact content), so it
+      // cannot carry this signal.
+      const keys = [...new Set(body.changes.flatMap((c: object) => Object.keys(c)))].sort();
+      expect(keys).toEqual(["action", "at", "target"]);
 
-    // The signal is a SEPARATE top-level field: `contradictions`, scoped to
-    // this brief, naming both conflicting assertions plainly. The LLM call
-    // decides which side is factA vs factB, so check both names appear rather
-    // than pinning an order.
-    expect(body.contradictions).toHaveLength(1);
-    const pairText = body.contradictions[0].factA + " " + body.contradictions[0].factB;
-    expect(pairText).toMatch(/Vercel/);
-    expect(pairText).toMatch(/AWS ECS/);
+      // The signal is a SEPARATE top-level field: `contradictions`, scoped to
+      // this brief, naming both conflicting assertions plainly. The LLM call
+      // decides which side is factA vs factB, so check both names appear rather
+      // than pinning an order.
+      expect(body.contradictions).toHaveLength(1);
+      const pairText = body.contradictions[0].factA + " " + body.contradictions[0].factB;
+      expect(pairText).toMatch(/Vercel/);
+      expect(pairText).toMatch(/AWS ECS/);
 
-    // Reading staleness is what triggers the scan+file — the dispute exists,
-    // same-tier (both assertions were ingested by the same admin, actorType
-    // human), matching the fact_disputes "same-tier only" rule.
-    const disputes = await db.factDispute.findMany({ where: { orgId: s.orgId } });
-    expect(disputes).toHaveLength(1);
-    expect(disputes[0].existingActorType).toBe("human");
-    expect(disputes[0].proposerActorType).toBe("human");
-    expect(disputes[0].status).toBe("disputed");
+      // Reading staleness is what triggers the scan+file — the dispute exists,
+      // same-tier (both assertions were ingested by the same admin, actorType
+      // human), matching the fact_disputes "same-tier only" rule.
+      const disputes = await db.factDispute.findMany({ where: { orgId: s.orgId } });
+      expect(disputes).toHaveLength(1);
+      expect(disputes[0].existingActorType).toBe("human");
+      expect(disputes[0].proposerActorType).toBe("human");
+      expect(disputes[0].status).toBe("disputed");
 
-    findings.push(
-      `C.2b PASS (was FAIL) — GET /api/briefs/${s.briefId}/staleness now returns a top-level \`contradictions\` field (1 entry, factA/factB naming Vercel and AWS ECS by content) alongside the unchanged \`changes\` list, and reading it opened a real same-tier FactDispute (${disputes[0].id}). The grantee's signal is no longer one collapsed target string for both writes — a genuine disagreement now reads differently from a plain correction.`,
-    );
-  });
+      findings.push(
+        `C.2b PASS (was FAIL) — GET /api/briefs/${s.briefId}/staleness now returns a top-level \`contradictions\` field (1 entry, factA/factB naming Vercel and AWS ECS by content) alongside the unchanged \`changes\` list, and reading it opened a real same-tier FactDispute (${disputes[0].id}). The grantee's signal is no longer one collapsed target string for both writes — a genuine disagreement now reads differently from a plain correction.`,
+      );
+    },
+    MODEL_TIMEOUT_MS,
+  );
 
-  it("C.2c — the handoff brief's own read surface populates a contradiction block (the persisted Brief row stays point-in-time, unchanged)", async () => {
-    const brief = await db.brief.findFirstOrThrow({ where: { id: s.briefId } });
-    expect(brief.type).toBe("handoff");
-    // The PERSISTED brief row is deliberately untouched — a handoff brief is an
-    // immutable record of what was known at generation time (same principle
-    // GET /api/briefs/:id/staleness's own header comment states for `changed`),
-    // so this reads exactly as it did at generation time.
-    expect(brief.decisions).toBeNull();
-    expect(JSON.stringify(brief.sections)).toContain("Vercel");
-    expect(JSON.stringify(brief.sections)).not.toContain("AWS ECS");
+  it(
+    "C.2c — the handoff brief's own read surface populates a contradiction block (the persisted Brief row stays point-in-time, unchanged)",
+    async () => {
+      requireModel("C.2c");
+      const brief = await db.brief.findFirstOrThrow({ where: { id: s.briefId } });
+      expect(brief.type).toBe("handoff");
+      // The PERSISTED brief row is deliberately untouched — a handoff brief is an
+      // immutable record of what was known at generation time (same principle
+      // GET /api/briefs/:id/staleness's own header comment states for `changed`),
+      // so this reads exactly as it did at generation time.
+      expect(brief.decisions).toBeNull();
+      expect(JSON.stringify(brief.sections)).toContain("Vercel");
+      expect(JSON.stringify(brief.sections)).not.toContain("AWS ECS");
 
-    // The LIVE read surface, not history, carries the signal: the staleness
-    // response (asserted in C.2b) carries the same {factA, factB, note} shape
-    // BriefView's contradiction block consumes for architecture briefs —
-    // components/agents/contradiction-block.tsx extracts that exact renderer so
-    // app/(app)/briefs/[id]/brief-document.tsx (the page this scenario's
-    // grantee actually reads) can populate it from the staleness scan
-    // instead of a generation-time Brief.contradictions column, which the
-    // handoff agent's own output schema never populates.
-    const staleness = await (await stalenessGET(new Request("http://t"), params(s.briefId))).json();
-    expect(staleness.contradictions).toHaveLength(1);
+      // The LIVE read surface, not history, carries the signal: the staleness
+      // response (asserted in C.2b) carries the same {factA, factB, note} shape
+      // BriefView's contradiction block consumes for architecture briefs —
+      // components/agents/contradiction-block.tsx extracts that exact renderer so
+      // app/(app)/briefs/[id]/brief-document.tsx (the page this scenario's
+      // grantee actually reads) can populate it from the staleness scan
+      // instead of a generation-time Brief.contradictions column, which the
+      // handoff agent's own output schema never populates.
+      const staleness = await (await stalenessGET(new Request("http://t"), params(s.briefId))).json();
+      expect(staleness.contradictions).toHaveLength(1);
 
-    findings.push(
-      `C.2c PASS (was FAIL) — brief ${s.briefId} (type=handoff) still asserts only "Vercel" in its own persisted sections (correct: point-in-time), but its read surface (GET .../staleness) now carries a real contradiction block naming both assertions, rendered by the same component BriefView already used for architecture briefs. A grantee opening this briefing now sees "Sources now disagree" with both facts shown, not a silent pick of one side.`,
-    );
-  });
+      findings.push(
+        `C.2c PASS (was FAIL) — brief ${s.briefId} (type=handoff) still asserts only "Vercel" in its own persisted sections (correct: point-in-time), but its read surface (GET .../staleness) now carries a real contradiction block naming both assertions, rendered by the same component BriefView already used for architecture briefs. A grantee opening this briefing now sees "Sources now disagree" with both facts shown, not a silent pick of one side.`,
+      );
+    },
+    MODEL_TIMEOUT_MS,
+  );
 
   // ------------------------------------------------------------------ C.3
   it("C.3a — narrowing the grant mid-task works at the gate: parent denied, child allowed", async () => {

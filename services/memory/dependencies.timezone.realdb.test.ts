@@ -5,6 +5,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 /** QA_URL with the session TimeZone set, keeping whatever query it already carries (CI's has `?sslmode=disable`). */
@@ -38,7 +39,7 @@ describe.skipIf(!QA_URL)("the dependency graph under a Los Angeles session", () 
   afterAll(async () => {
     if (!QA_URL) return;
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: READER } });
     await db.$disconnect();
   });

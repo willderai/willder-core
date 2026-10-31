@@ -13,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { stubEmbeddingService } from "@/services/memory/embedding-service-double.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const removals = vi.hoisted(() => [] as { groupId: string; sourceId?: string }[]);
 vi.mock("@/services/memory/store", () => ({
@@ -65,7 +66,7 @@ describe.skipIf(!QA_URL)("a refused or late connector ingest removes only its ow
   afterAll(async () => {
     for (const orgId of [ORG, OTHER_ORG]) {
       await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${orgId}`;
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.$disconnect();
   });

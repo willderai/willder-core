@@ -28,6 +28,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { RESEARCH_AGENT_ID } from "@/services/access/system-actors";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -158,7 +159,7 @@ describe.skipIf(!QA_URL)("content a person accepts names that person's audit row
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -167,7 +168,7 @@ describe.skipIf(!QA_URL)("content a person accepts names that person's audit row
   beforeEach(async () => {
     queuedJobs.length = 0;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "Accept audit" } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "deals" } });

@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const OTHER_ORG = "org-qa-local-dev-token-other";
@@ -23,7 +24,7 @@ describe.skipIf(!QA_URL)("mintLocalDevToken against a real database", () => {
     const ids = orgs.map((o) => o.id);
     await db.capability.deleteMany({ where: { orgId: { in: ids } } });
     await db.scope.deleteMany({ where: { orgId: { in: ids } } });
-    await db.org.deleteMany({ where: { id: { in: ids } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ids } } });
   }
 
   beforeAll(async () => {

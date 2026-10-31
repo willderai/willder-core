@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // A nav badge count the database cannot answer is reported as null, never 0.
 //
@@ -124,7 +125,7 @@ describe.skipIf(!QA_URL)("GET /api/nav/badges when Postgres cannot run one count
 
   afterAll(async () => {
     await clean();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db?.$disconnect?.();
   });
 

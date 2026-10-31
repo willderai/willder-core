@@ -20,6 +20,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // The leaf module, not the `@/services/access` barrel: the barrel builds the `@/lib/db`
 // singleton at import time, before beforeAll points DATABASE_URL at the test database.
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -135,7 +136,7 @@ describe.skipIf(!QA_URL)("the own-write overlay on a bare-org entity", () => {
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const id of [ORG, OTHER_ORG]) {
       await db.org.create({ data: { id, name: id } });
       await db.scope.create({ data: { orgId: id, path: `org_${id}`, name: `org_${id}` } });
@@ -163,7 +164,7 @@ describe.skipIf(!QA_URL)("the own-write overlay on a bare-org entity", () => {
     if (QA_URL === undefined) return;
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

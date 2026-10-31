@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { FileEpisodeGraph } from "./file-episode-stamps";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const DIMENSIONS = 384;
@@ -97,7 +98,7 @@ describe.skipIf(!QA_URL)("old file episodes are stamped with their passage or re
       await db.uploadedFile.deleteMany({ where: { orgId } });
       await db.auditLog.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 

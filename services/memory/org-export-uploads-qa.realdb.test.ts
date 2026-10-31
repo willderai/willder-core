@@ -19,6 +19,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const blobs = vi.hoisted(() => {
   const stored = new Map<string, { pathname: string; bytes: Buffer }>();
@@ -152,7 +153,7 @@ describe.skipIf(!QA_URL)("uploads in the export, real Postgres", () => {
   }
   async function reset() {
     await db.memoryChunk.deleteMany({ where: { orgId: { in: ORGS } } });
-    await db.org.deleteMany({ where: { id: { in: ORGS } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ORGS } } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, MEMBER] } } });
   }
   /** Rows and stored files the target org holds: a refused import must leave none. */

@@ -15,6 +15,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 vi.mock("@/services/integrations/mailbox", async (importOriginal) => {
@@ -94,7 +95,7 @@ describe.skipIf(!QA_URL)("Gmail/Outlook OAuth routes, against a real database", 
 
   beforeEach(async () => {
     await db.integration.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await db.org.createMany({
       data: [
         { id: ORG_A, name: "QA A" },
@@ -106,7 +107,7 @@ describe.skipIf(!QA_URL)("Gmail/Outlook OAuth routes, against a real database", 
   afterEach(() => vi.useRealTimers());
   afterAll(async () => {
     await db.integration.deleteMany({ where: { orgId: { in: [ORG_A, ORG_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG_A, ORG_B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG_A, ORG_B] } } });
     await db.$disconnect();
     vi.unstubAllEnvs();
   });

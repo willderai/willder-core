@@ -24,6 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { stubEmbeddingService } from "@/services/memory/embedding-service-double.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The graph store, reduced to a count of what reached it. */
 const graph = vi.hoisted(() => {
@@ -145,7 +146,7 @@ describe.skipIf(!QA_URL)("an ingest that names a source with no connection write
     vi.unstubAllEnvs();
     for (const orgId of [ORG, OTHER_ORG]) {
       await db.changeEvent.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.$disconnect();
   });

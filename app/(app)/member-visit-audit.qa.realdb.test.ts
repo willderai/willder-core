@@ -16,6 +16,7 @@ import type { ReactElement } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -152,7 +153,7 @@ describe.skipIf(!QA_URL)("Access, Settings and Integrations page probes match th
       await db.scope.deleteMany({ where: { orgId: orgs } });
       await db.user.deleteMany({ where: { orgId: orgs } });
       await db.orgPreference.deleteMany({ where: { orgId: orgs } });
-      await db.org.deleteMany({ where: { id: orgs } });
+      await deleteOrgsWithRetry(db, { where: { id: orgs } });
       await db.$disconnect();
     }
   });

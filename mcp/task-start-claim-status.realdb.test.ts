@@ -22,6 +22,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { renderSessionState, sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { TASK_START_HEADINGS } from "./task-start-headings";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -54,7 +55,7 @@ describe.skipIf(!QA_URL)("task-start statuses from recorded evidence, against a 
       await db.memoryChunk.deleteMany({ where: { orgId } });
       await db.auditLog.deleteMany({ where: { orgId } });
       await db.capability.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     seqs.clear();
   }

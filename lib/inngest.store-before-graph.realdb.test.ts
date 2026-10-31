@@ -23,6 +23,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Ingest jobs queued by `after()` (INNGEST_BYPASS), waiting for a test to run them. */
 const afterJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -248,7 +249,7 @@ describe.skipIf(!QA_URL)("an ingest job stores its text before any graph step", 
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${ORG}`;
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
     await db.factEdge.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: WRITER } });
   }
 

@@ -17,6 +17,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("./store", () => ({
   memory: {},
@@ -120,7 +121,7 @@ describe.skipIf(!QA_URL)("an import leaves out every kind an erasure in the targ
     await clearMemory();
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: ADMIN } });
   }
 

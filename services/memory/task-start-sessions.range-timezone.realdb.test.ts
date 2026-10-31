@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const SESSION_TIME_ZONES = ["America/Los_Angeles", "Asia/Tokyo"];
@@ -41,7 +42,7 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)("the session-starts range on a
     expect(TimeZone).toBe(zone);
 
     await db.taskStartServedItem.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.taskStartServedItem.create({
       data: {
@@ -64,7 +65,7 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)("the session-starts range on a
   afterAll(async () => {
     if (!db) return;
     await db.taskStartServedItem.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "qa_sessions_a";
@@ -51,7 +52,7 @@ describe.skipIf(!QA_URL)("GET /api/audit/sessions, real Postgres", () => {
     await db.grant.deleteMany({ where: { orgId: orgs } });
     await db.scope.deleteMany({ where: { orgId: orgs } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, MEMBER] } } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   }
 
   /** One block served: one row per line, all sharing a serving id. */

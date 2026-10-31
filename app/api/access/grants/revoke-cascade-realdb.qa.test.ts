@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "org-qa-124";
@@ -55,7 +56,7 @@ describe.skipIf(!QA_URL)("grant revoke -> handoff capability cascade, real Postg
     await db.grant.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.scope.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.user.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
 
     await db.org.create({ data: { id: ORG, name: "Case124" } });
     await db.org.create({ data: { id: OTHER_ORG, name: "Case124 other" } });
@@ -101,7 +102,7 @@ describe.skipIf(!QA_URL)("grant revoke -> handoff capability cascade, real Postg
     await db.grant.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.scope.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
     await db.user.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

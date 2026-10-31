@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: { ingest: async () => ({ episodeId: "graph-episode" }) },
@@ -62,7 +63,7 @@ describe.skipIf(!QA_URL)("the free plan's episode cap on a self-hosted install a
       await db.$executeRaw`DELETE FROM fact_edges WHERE "orgId" = ${id}`;
       await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" = ${id}`;
     }
-    await db.org.deleteMany({ where: { id: { in: all } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: all } } });
   }
 
   beforeAll(async () => {

@@ -16,6 +16,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -69,7 +70,7 @@ describe.skipIf(!QA_URL)("export and import access, QA, real Postgres", () => {
 
   async function reset() {
     await db.factEdge.deleteMany({ where: { orgId: { in: ORGS } } });
-    await db.org.deleteMany({ where: { id: { in: ORGS } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ORGS } } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, SALES_READER, TARGET_READER] } } });
   }
 

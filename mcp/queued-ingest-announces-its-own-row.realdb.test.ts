@@ -26,6 +26,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Ingest jobs queued by `after()`, in queue order, waiting for a test to run them. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -202,7 +203,7 @@ describe.skipIf(!QA_URL)("a write the request path could not store or announce i
   afterAll(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
   beforeEach(async () => {
@@ -220,7 +221,7 @@ describe.skipIf(!QA_URL)("a write the request path could not store or announce i
     failNext.announcements = 0;
     failNext.acknowledgements = 0;
     failNext.caps = 0;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

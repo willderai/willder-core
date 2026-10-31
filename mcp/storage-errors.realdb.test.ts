@@ -15,6 +15,7 @@ import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { NO_DRIFT, toolListDrift } from "./tool-list-drift.testsupport";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -120,7 +121,7 @@ describe.skipIf(!QA_URL)("MCP tools answer storage errors in plain words", () =>
     const mcp = await startMcpTestServer();
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, WEB]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
     const token = `wcap_test_storage_${Math.random().toString(36).slice(2)}`;
@@ -146,7 +147,7 @@ describe.skipIf(!QA_URL)("MCP tools answer storage errors in plain words", () =>
     await client?.close();
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

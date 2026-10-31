@@ -20,6 +20,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import { renderSessionState, sessionStateName } from "@/cli/hooks/willder-capture.mjs";
 import { CHANGE_NOTICES_HEADING } from "./task-start-headings";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/llm", () => ({
   createLLMClient: () => ({
@@ -146,7 +147,7 @@ describe.skipIf(!QA_URL)("a session's captures count once and are told once, aga
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG, plan: "free" } });
     for (const path of [ROOT, WEB]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
     a = await connect(await mint("agent-a", "write"), "agent-a");
@@ -160,7 +161,7 @@ describe.skipIf(!QA_URL)("a session's captures count once and are told once, aga
     await Promise.all(clients.map((client) => client.close()));
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

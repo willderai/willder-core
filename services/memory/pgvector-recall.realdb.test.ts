@@ -19,6 +19,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const DIMENSIONS = 384;
@@ -117,7 +118,7 @@ describe.skipIf(!QA_URL)("semantic search at production index settings, real Pos
     const random = seededRandom(20261007);
     const shared = randomUnitVector(random);
     for (const orgId of [ORG, NEIGHBOR_ORG]) {
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
       await db.org.create({ data: { id: orgId, name: orgId } });
       const topics = Array.from({ length: CHUNKS_PER_ORG / CHUNKS_PER_TOPIC }, () => randomUnitVector(random));
       if (orgId === ORG) {
@@ -144,7 +145,7 @@ describe.skipIf(!QA_URL)("semantic search at production index settings, real Pos
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: { in: [ORG, NEIGHBOR_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, NEIGHBOR_ORG] } } });
     await db.$disconnect();
     await storeDb?.$disconnect();
   });

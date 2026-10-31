@@ -24,6 +24,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Graphiti, reduced to what a GitHub sync and a disconnect use. */
 const graphiti = vi.hoisted(() => {
@@ -144,7 +145,7 @@ describe.skipIf(!QA_URL)("a source disconnected during its first sync keeps none
 
   afterAll(async () => {
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

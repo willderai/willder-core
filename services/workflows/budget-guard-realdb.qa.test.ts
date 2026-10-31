@@ -25,6 +25,7 @@
 // DATABASE_URL, which may point at a live database. Skips cleanly without it.
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -46,14 +47,14 @@ describe.skipIf(!QA_URL)("workflow budget guard against real Postgres", { timeou
     ({ reserveWorkflowCredits, settleWorkflowCredits } = await import("./engine"));
 
     await db.workflowRun.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "QA 131 org" } });
   }, 60_000);
 
   afterAll(async () => {
     if (!db) return;
     await db.workflowRun.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

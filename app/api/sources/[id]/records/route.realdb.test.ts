@@ -22,6 +22,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { stubEmbeddingService } from "@/services/memory/embedding-service-double.testsupport";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** The memory service's graph: episodes keyed by scope, each stamped with its source. */
 const graph = vi.hoisted(() => {
@@ -212,7 +213,7 @@ describe.skipIf(!QA_URL)("GET /api/sources/:id/records", () => {
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllGlobals();
   });
@@ -221,7 +222,7 @@ describe.skipIf(!QA_URL)("GET /api/sources/:id/records", () => {
     graph.reset();
     blobs.clear();
     drive.text = "Launch is in March.\n\nOwner is Priya.";
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     const scopes = [
       ["sc-qa-rec-root", ROOT],

@@ -31,6 +31,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -167,7 +168,7 @@ describe.skipIf(!QA_URL)("every person's write names the visible audit row that 
   });
 
   afterAll(async () => {
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
@@ -177,7 +178,7 @@ describe.skipIf(!QA_URL)("every person's write names the visible audit row that 
     queuedJobs.length = 0;
     vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "Write stamp" } });
     const root = await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "planning" } });

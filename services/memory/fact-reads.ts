@@ -65,6 +65,7 @@ import {
 import { FACT_RECORD_TYPE } from "./change-events";
 import { recordScopesOfVersions } from "@/services/access/derived-writes";
 import { newerVersionOfFactOf } from "./fact-update";
+import { changeTheRule, personRuleCopyOf, personRuleCopySentence, type PersonRuleCopy } from "./person-rule-copy";
 
 /** The slice of a Prisma client or transaction the reads here need. */
 export type FactReadsClient = Pick<Prisma.TransactionClient, "$queryRaw" | "$executeRaw">;
@@ -116,6 +117,8 @@ export class UnreadVersionError extends Error {
       horizonSighted?: boolean;
       storedVersionId?: string;
       replaceVersionId?: string;
+      /** Set when the version a refusal would point at copies a person's rule. */
+      rule?: PersonRuleCopy;
     },
   ) {
     const after = !input.lastReadVersionId
@@ -129,13 +132,17 @@ export class UnreadVersionError extends Error {
     const replace = input.replaceVersionId;
     // The advised base is always the current version of a fact the writer read, named with
     // the version it read, so the writer can tell whether that fact is the one it is writing.
-    const advice = !replace
-      ? `nothing shows ${input.unreadVersionId} is a version of the fact you read (one name holds many facts), ` +
-        `so no baseVersion is named here: to replace a version, pass the id of the version you mean to replace.` +
-        (input.storedVersionId ? " The same text again without a baseVersion only repeats this answer." : "")
-      : replace === input.unreadVersionId
-        ? `it is the current version of ${input.lastReadVersionId}'s fact; to replace it, pass baseVersion ${replace}.`
-        : `${input.lastReadVersionId}'s fact is now ${replace}; to replace that fact, pass baseVersion ${replace}.`;
+    const repeats = input.storedVersionId ? " The same text again without a baseVersion only repeats this answer." : "";
+    const copy = replace ?? input.unreadVersionId;
+    const advice = input.rule
+      ? `${personRuleCopySentence(copy, input.rule)} To keep yours beside it, pass baseVersion ${copy}; to change the ${input.rule.kind} itself, ${changeTheRule(input.rule)}${repeats}`
+      : !replace
+        ? `nothing shows ${input.unreadVersionId} is a version of the fact you read (one name holds many facts), ` +
+          `so no baseVersion is named here: to replace a version, pass the id of the version you mean to replace.` +
+          repeats
+        : replace === input.unreadVersionId
+          ? `it is the current version of ${input.lastReadVersionId}'s fact; to replace it, pass baseVersion ${replace}.`
+          : `${input.lastReadVersionId}'s fact is now ${replace}; to replace that fact, pass baseVersion ${replace}.`;
     super(
       `"${fact.entityName}" in ${fact.eventScopePath} has a version you have not read: ${input.unreadVersionId}${after}.${stored} ` +
         `Read ${input.unreadVersionId} with memory_version, then write again; ${advice}`,
@@ -254,11 +261,10 @@ export interface UnreadVersion {
  */
 export async function assertNoUnreadVersion(client: FactReadsClient, writer: FactWriter): Promise<void> {
   const unread = await newestUnreadVersion(client, writer, null);
-  if (unread)
-    throw new UnreadVersionError(writer, {
-      ...unread,
-      replaceVersionId: await replaceableVersion(client, writer, unread.lastReadVersionId),
-    });
+  if (!unread) return;
+  const replaceVersionId = await replaceableVersion(client, writer, unread.lastReadVersionId);
+  const rule = await personRuleCopyOf(client, writer.orgId, replaceVersionId ?? unread.unreadVersionId);
+  throw new UnreadVersionError(writer, { ...unread, replaceVersionId, ...(rule ? { rule } : {}) });
 }
 
 /**
@@ -274,11 +280,14 @@ export async function unreadVersionError(
 ): Promise<UnreadVersionError> {
   const unread = await newestUnreadVersion(client, writer, input.storedVersionId);
   const horizon = unread ? { lastReadVersionId: unread.lastReadVersionId, horizonSighted: unread.horizonSighted } : {};
+  const replaceVersionId = unread ? await replaceableVersion(client, writer, unread.lastReadVersionId) : undefined;
+  const rule = await personRuleCopyOf(client, writer.orgId, replaceVersionId ?? input.current);
   return new UnreadVersionError(writer, {
     unreadVersionId: input.current,
     storedVersionId: input.storedVersionId,
     ...horizon,
-    replaceVersionId: unread ? await replaceableVersion(client, writer, unread.lastReadVersionId) : undefined,
+    replaceVersionId,
+    ...(rule ? { rule } : {}),
   });
 }
 

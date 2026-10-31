@@ -20,6 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "escdeny1";
@@ -57,7 +58,7 @@ describe.skipIf(!QA_URL)("the access.manage gate still denies, real Postgres", (
     await db.agentRun.deleteMany({ where: { orgId: ORG } });
     await db.agent.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
 
     org = await db.org.create({ data: { id: ORG, name: "QA deny" } });
     await db.user.create({

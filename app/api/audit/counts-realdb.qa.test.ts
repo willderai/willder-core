@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "310";
@@ -80,7 +81,7 @@ describe.skipIf(!QA_URL)("audit counts and token short id, real Postgres", () =>
       await db.grant.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
       await db.user.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.org.create({ data: { id: ORG, name: "Case310" } });
     await db.org.create({ data: { id: OTHER_ORG, name: "Case310 other" } });

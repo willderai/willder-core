@@ -15,6 +15,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "./check";
 import { seedMember } from "./member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -53,7 +54,7 @@ describe.skipIf(!QA_URL)("a membership of one org reaches nothing in another, re
     await db.auditLog.deleteMany({ where: { orgId: { in: [A, B] } } });
     await db.grant.deleteMany({ where: { orgId: { in: [A, B] } } });
     await db.user.deleteMany({ where: { id: { in: [BOTH, ONLY_B, LEFT_B] } } });
-    await db.org.deleteMany({ where: { id: { in: [A, B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [A, B] } } });
   }
 
   beforeAll(async () => {

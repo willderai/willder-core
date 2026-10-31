@@ -20,6 +20,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -87,7 +88,7 @@ describe.skipIf(!QA_URL)("export then import into a fresh org, real Postgres", (
   async function reset() {
     await db.factEdge.deleteMany({ where: { orgId: { in: ORGS } } });
     await db.$executeRaw`UPDATE conventions SET "supersedesId" = NULL, "supersededById" = NULL WHERE "orgId" = ANY(${ORGS})`;
-    await db.org.deleteMany({ where: { id: { in: ORGS } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: ORGS } } });
     await db.user.deleteMany({ where: { id: { in: [ADMIN, SALES_MEMBER] } } });
   }
 

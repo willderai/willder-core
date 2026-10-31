@@ -113,7 +113,7 @@ import {
   type TaskStartContext,
   type TaskStartRead,
 } from "@/services/memory/task-start";
-import { markWritesAgainst } from "@/services/memory/superseded-facts";
+import { markWritesAgainst, supersededMark, type SupersededMarking } from "@/services/memory/superseded-facts";
 import { servedConflicts } from "@/services/memory/served-conflicts";
 import {
   HANDOFF_PARTS,
@@ -791,14 +791,18 @@ function latestCaptureFirst(
  * since retired the version; any other says its summary, which carries that mark already.
  */
 function formatWrite(
-  write: ServedWrite & { supersededById?: string | null },
+  write: ServedWrite & Partial<SupersededMarking>,
   passage: string,
   marker: string | null = null,
 ): string {
   const day = dayShown(write.writtenAt);
   const line = `- ${write.op} ${write.recordType} ${write.recordId} by ${write.actorId}${day === null ? "" : `, ${day}`}`;
   if (write.content !== undefined) {
-    const superseded = write.supersededById ? `[superseded by ${write.supersededById}] ` : "";
+    const superseded = write.supersededById
+      ? `${supersededMark(write.supersededById, write.replacementDatedAt)} `
+      : write.supersededUnnamed
+        ? `${supersededMark(null)} `
+        : "";
     return `${line}: ${marked(marker)}${superseded}${passage}`;
   }
   return write.summary ? `${line}: ${marked(marker)}${write.summary}` : line;
@@ -1101,7 +1105,7 @@ export function renderTaskStartBlock(sections: TaskStartSections, budgetGiven?: 
 type TaskStartSections = TaskStartContext &
   Partial<TaskContext> & {
     notes?: LiveNotes;
-    writes: (ServedWrite & { supersededById?: string | null })[];
+    writes: (ServedWrite & Partial<SupersededMarking>)[];
     since?: SinceLastSession | null;
     /** Set when the request reports a session boundary ({@link TaskStartRequest.boundary}). */
     boundary?: boolean;
@@ -1233,7 +1237,7 @@ function layOutBlock(
     };
   };
   // Only a write the same task recorded is marked: another task's claim is not this task's to judge.
-  const writeEntry = (write: ServedWrite & { supersededById?: string | null }): Entry => {
+  const writeEntry = (write: ServedWrite & Partial<SupersededMarking>): Entry => {
     const marker = write.ofTask ? markFor(`${write.summary}\n${write.content ?? ""}`) : null;
     return {
       key: recordRevisionKey("change", write.id, 1),
@@ -1729,13 +1733,13 @@ export async function taskStartNotice(ctx: AccessContext, request: TaskStartRequ
   // A write whose version later lost a conflict is still recent run state, but its text
   // is not what the fact says; it is served marked as superseded, never bare. The record
   // of who won came back with the read, so marking costs no statement of its own.
-  const render = ({ context, task, notes, winners, since }: TaskStartRead) =>
+  const render = ({ context, task, notes, winners, replacementDatedAt, since }: TaskStartRead) =>
     renderTaskStartBlock({
       ...context,
       ...task,
       notes,
       since,
-      writes: markWritesAgainst(context.writes, winners),
+      writes: markWritesAgainst(context.writes, winners, replacementDatedAt),
       boundary: request.boundary === true,
     });
   // The erased-person check runs on what the block shows, and the block is rendered again

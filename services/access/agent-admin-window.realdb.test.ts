@@ -23,6 +23,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "./check";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn(async () => null) }));
 
@@ -139,7 +140,7 @@ describe.skipIf(!QA_URL)("an agent's admin window is two hours from minting, rea
     await db.grant.deleteMany({ where: { orgId: orgs } });
     await db.scope.deleteMany({ where: { orgId: orgs } });
     await db.user.deleteMany({ where: { orgId: orgs } });
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   }
 
   beforeAll(async () => {

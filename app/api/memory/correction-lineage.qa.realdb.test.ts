@@ -24,6 +24,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -222,7 +223,7 @@ describe.skipIf(!QA_URL)("a correction never loses the fact it overrules, and ne
       await db.changeEvent.deleteMany({ where: { orgId } });
       await db.factEdge.deleteMany({ where: { orgId } });
       await db.erasureSuppression.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.user.deleteMany({ where: { id: { in: [ADMIN, WRITER] } } });
   }

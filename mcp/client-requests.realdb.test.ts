@@ -32,6 +32,7 @@ import {
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { Asker } from "./client-requests";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "mcpclientrequests";
@@ -74,7 +75,7 @@ describe.skipIf(!QA_URL)("the client-request relay", { timeout: 30_000 }, () => 
     const mcp = await startMcpTestServer();
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const id of [ORG, OTHER_ORG]) {
       await db.org.create({ data: { id, name: id } });
       await db.scope.create({ data: { orgId: id, path: `org_${id}`, name: id } });
@@ -123,7 +124,7 @@ describe.skipIf(!QA_URL)("the client-request relay", { timeout: 30_000 }, () => 
     if (QA_URL === undefined) return;
     vi.unstubAllEnvs();
     await closeMcp?.();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

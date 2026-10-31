@@ -26,6 +26,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -211,7 +212,7 @@ describe.skipIf(!QA_URL)(
     });
 
     afterAll(async () => {
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
       vi.unstubAllEnvs();
       vi.unstubAllGlobals();
@@ -225,7 +226,7 @@ describe.skipIf(!QA_URL)(
       queuedJobs.length = 0;
       faults.refuseEmbeddingOnce = null;
       faults.graphDown = false;
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.org.create({ data: { id: ORG, name: "Self-hosted" } });
       await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
       const planning = await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "planning" } });

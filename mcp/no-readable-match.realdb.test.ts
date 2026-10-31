@@ -31,6 +31,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import { NO_READABLE_MATCH_NOTE, UNHELD_VALUES_META_KEY } from "./read-notes";
 import { specificValuesIn, textHoldsValue } from "@/services/memory/specific-values";
 import { SPELLING_CASES } from "@/services/memory/specific-values.cases.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // The stand-in graph's facts here have no stored rows behind them, and this file is about
 // the no-readable-match note, not about which facts a stored source supports: the serve-time source check
@@ -318,7 +319,7 @@ describe.skipIf(!QA_URL)(
       mcpUrl = mcp.url;
       closeMcp = mcp.close;
 
-      await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+      await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
       for (const [orgId, paths] of [
         [
           ORG,
@@ -362,7 +363,7 @@ describe.skipIf(!QA_URL)(
       if (QA_URL === undefined) return;
       await closeMcp?.();
       await service.stop();
-      await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+      await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
       await db.$disconnect();
     }, HOOK_TIMEOUT_MS);
 
@@ -985,7 +986,7 @@ describe.skipIf(!QA_URL)(
       const VOLUME_ORG = "noreadablematchvolume";
       const VOLUME_ROOT = `org_${VOLUME_ORG}`;
       const VOLUME_SCOPE = `${VOLUME_ROOT}.eng`;
-      await db.org.deleteMany({ where: { id: VOLUME_ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: VOLUME_ORG } });
       await db.org.create({ data: { id: VOLUME_ORG, name: VOLUME_ORG } });
       await db.scope.create({ data: { orgId: VOLUME_ORG, path: VOLUME_ROOT, name: "root" } });
       await db.scope.create({ data: { orgId: VOLUME_ORG, path: VOLUME_SCOPE, name: "eng" } });
@@ -1156,7 +1157,7 @@ describe.skipIf(!QA_URL)(
         `[no-readable-match] real-org volume in a hidden scope, 8 values: wall p50 ${hidden.wall.toFixed(0)} ms; over a plain pass, in Postgres: p50 ${hidden.ratio.toFixed(1)}\n`,
       );
       expect(hidden.ratio).toBeLessThan(visible.ratio / 2);
-      await db.org.deleteMany({ where: { id: VOLUME_ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: VOLUME_ORG } });
     }, 120_000);
   },
 );

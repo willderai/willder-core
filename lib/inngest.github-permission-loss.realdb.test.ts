@@ -22,6 +22,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graphiti = vi.hoisted(() => {
   const facts: { group: string; sourceId: string | undefined; episodeId: string; text: string }[] = [];
@@ -141,7 +142,7 @@ describe.skipIf(!QA_URL)("a GitHub token that loses one permission, or the whole
   afterAll(async () => {
     vi.unstubAllGlobals();
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

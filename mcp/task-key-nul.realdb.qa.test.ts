@@ -13,6 +13,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -92,7 +93,7 @@ describe.skipIf(!QA_URL)("a task key the database cannot store does not cost the
     const mcp = await startMcpTestServer();
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     for (const path of [ROOT, WEB]) await db.scope.create({ data: { orgId: ORG, path, name: path } });
     const token = `wcap_test_nul_${Math.random().toString(36).slice(2)}`;
@@ -118,7 +119,7 @@ describe.skipIf(!QA_URL)("a task key the database cannot store does not cost the
     await client?.close();
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

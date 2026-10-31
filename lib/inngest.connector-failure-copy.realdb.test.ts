@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 // The mock flags are read when the connectors are imported; the real branches are the ones under test.
 vi.hoisted(() => {
@@ -72,7 +73,7 @@ describe.skipIf(!QA_URL)(
     afterAll(async () => {
       vi.unstubAllGlobals();
       await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-      await db.org.deleteMany({ where: { id: ORG } });
+      await deleteOrgsWithRetry(db, { where: { id: ORG } });
       await db.$disconnect();
     });
 

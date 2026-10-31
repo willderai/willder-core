@@ -15,6 +15,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { Actor } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 
@@ -47,7 +48,7 @@ describe.skipIf(!QA_URL)("who can read a scope, and check() agrees, real Postgre
     }[]) {
       await model.deleteMany({ where: { orgId: orgs } });
     }
-    await db.org.deleteMany({ where: { id: orgs } });
+    await deleteOrgsWithRetry(db, { where: { id: orgs } });
   }
 
   async function person(id: string, role: "owner" | "admin" | "member", orgId = ORG) {

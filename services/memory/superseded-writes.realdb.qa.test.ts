@@ -10,6 +10,7 @@
 //
 // Set QA_DATABASE_URL to an ISOLATED, migrated test database; skips when unset.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -44,13 +45,13 @@ describe.skipIf(!QA_URL)("markSupersededWrites against real Postgres", () => {
 
   beforeEach(async () => {
     await db.factEdge.deleteMany({ where: { orgId: ORGS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
     for (const id of [ORG, OTHER_ORG]) await db.org.create({ data: { id, name: id } });
   });
 
   afterAll(async () => {
     await db.factEdge.deleteMany({ where: { orgId: ORGS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
     await db.$disconnect();
   });
 

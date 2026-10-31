@@ -25,6 +25,7 @@ import {
   pushCommits,
   type FakeRepositoryState,
 } from "@/services/connectors/fixtures/github";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graphiti = vi.hoisted(() => {
   const facts: { group: string; sourceId: string | undefined; episodeId: string; text: string }[] = [];
@@ -101,7 +102,7 @@ describe.skipIf(!QA_URL)("a GitHub source keeps its history across syncs", () =>
   afterAll(async () => {
     vi.unstubAllGlobals();
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -110,7 +111,7 @@ describe.skipIf(!QA_URL)("a GitHub source keeps its history across syncs", () =>
     vi.setSystemTime(T0);
     graphiti.reset();
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG, plan: "free" } });
     await db.source.create({
       data: {

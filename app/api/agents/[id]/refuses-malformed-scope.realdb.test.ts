@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "nulagentscope";
@@ -95,7 +96,7 @@ describe.skipIf(!QA_URL)("agent routes refuse a NUL or a non-string required sco
     for (const table of ["capability", "agent", "auditLog", "brief", "grant", "scope", "user"] as const) {
       await (db[table] as { deleteMany: (a: unknown) => Promise<unknown> }).deleteMany({ where: { orgId: ORG } });
     }
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   /** Send a route's request; a mocked runner's throw is reported as "reached". */

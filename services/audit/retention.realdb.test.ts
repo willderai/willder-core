@@ -13,6 +13,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { AUDIT_RETENTION_FLOOR_DAYS } from "./retention";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
@@ -79,7 +80,7 @@ describe.skipIf(!QA_URL)("audit retention floor: a purge keeps every row, real P
   afterAll(async () => {
     if (!db) return;
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await pool.query(`DROP OWNED BY ${APP_ROLE}`);
     await pool.query(`DROP ROLE ${APP_ROLE}`);
     await pool.end();

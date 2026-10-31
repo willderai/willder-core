@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const graphiti = vi.hoisted(() => {
   const facts: { group: string; sourceId: string | undefined; episodeId: string; text: string }[] = [];
@@ -124,7 +125,7 @@ describe.skipIf(!QA_URL)("the scheduled re-sync", () => {
   afterAll(async () => {
     vi.unstubAllGlobals();
     await cleanup();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

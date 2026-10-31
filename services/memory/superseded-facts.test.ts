@@ -5,7 +5,13 @@
 // database — the end-to-end behaviour against persisted records is
 // services/memory/conflict-read.realdb.test.ts.
 import { describe, expect, it } from "vitest";
-import { dropSupersededFacts, indexSupersession, supersededAt } from "./superseded-facts";
+import {
+  dropSupersededFacts,
+  indexSupersession,
+  markWritesAgainst,
+  supersededAt,
+  supersededMark,
+} from "./superseded-facts";
 
 const ORG = "acme";
 /** The Graphiti group a version in `org_acme.release` is stored under. */
@@ -123,5 +129,56 @@ describe("supersededAt, for a graph fact stamped with its chunks", () => {
     const fact = stamped("graphiti-edge-1", "The release train leaves on Tuesday.", ["winner"]);
 
     expect(dropSupersededFacts([fact], record, RELEASE)).toEqual([fact]);
+  });
+});
+
+// The task-start block passes the date each replacement is served with, so a served write's mark
+// says it, as the replacement's (`as of`); the change feed passes none and its summaries are unchanged.
+describe("markWritesAgainst — the replacement's date, and a replacement not named", () => {
+  const events = [
+    { recordType: "fact", recordId: "v1", op: "create", summary: "Database: Postgres" },
+    { recordType: "fact", recordId: "v2", op: "update", summary: "Database: MySQL" },
+    { recordType: "fact", recordId: "v3", op: "create", summary: "Database: SQLite" },
+  ];
+  const winners = new Map([
+    ["v1", "v2"],
+    ["v2", "v4"],
+  ]);
+
+  it("dates the mark as the replacement's, a day in UTC, when given the replacements' dates", () => {
+    const marked = markWritesAgainst(events, winners, new Map([["v1", "2026-03-01T23:59:59.999Z"]]));
+    expect(marked.map((e) => e.summary)).toEqual([
+      "[superseded by v2 (as of 2026-03-01)] Database: Postgres",
+      "[superseded by v4] Database: MySQL",
+      "Database: SQLite",
+    ]);
+    expect(marked[0]).toMatchObject({ supersededById: "v2", replacementDatedAt: "2026-03-01T23:59:59.999Z" });
+    expect(marked[1]).toMatchObject({ supersededById: "v4", replacementDatedAt: null });
+  });
+
+  it("marks exactly as before without them", () => {
+    const marked = markWritesAgainst(events, winners);
+    expect(marked.map((e) => e.summary)).toEqual([
+      "[superseded by v2] Database: Postgres",
+      "[superseded by v4] Database: MySQL",
+      "Database: SQLite",
+    ]);
+    expect(marked.every((e) => !("replacementDatedAt" in e))).toBe(true);
+  });
+
+  it("marks a write whose replacement is not named (it reads as erased) without an id or a date", () => {
+    const marked = markWritesAgainst(events, new Map([["v1", null]]), new Map([["v1", "2026-03-01T00:00:00.000Z"]]));
+    expect(marked[0]).toEqual({
+      ...events[0],
+      summary: "[superseded] Database: Postgres",
+      supersededById: null,
+      supersededUnnamed: true,
+    });
+    expect(marked[1]).toEqual({ ...events[1], supersededById: null });
+  });
+
+  it("leaves off an instant that does not parse, never guessing one", () => {
+    expect(supersededMark("v2", "not a date")).toBe("[superseded by v2]");
+    expect(supersededMark("v2", null)).toBe("[superseded by v2]");
   });
 });

@@ -15,6 +15,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // Leaf modules, not the `@/services/access` barrel, so `@/lib/db` is built only
 // after beforeAll points DATABASE_URL at the QA database.
 import { hashCapabilityToken } from "./capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -30,7 +31,7 @@ describe.skipIf(!QA_URL)("listings of who reads a scope, with a deactivated agen
   async function clearTenant() {
     await db.capability.deleteMany({ where: { orgId: ORG } });
     await db.agent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   }
 
   /** A live read token on SALES, stored under `agentId`. */

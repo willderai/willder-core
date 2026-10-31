@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 vi.mock("@/lib/inngest", async (original) => ({
@@ -124,7 +125,7 @@ describe.skipIf(!QA_URL)("agent and account configuration needs authority (real 
   afterAll(async () => {
     // Deleting an org removes its rows, audit rows included, through the cascades.
     await db.user.deleteMany({ where: { orgId: { in: [ORG, OTHER_ORG] } } });
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

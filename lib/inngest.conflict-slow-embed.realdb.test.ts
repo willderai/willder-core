@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: { ingest: async () => ({ episodeId: "graph-episode" }) },
@@ -91,7 +92,7 @@ describe.skipIf(!QA_URL)("two simultaneous writes of one fact, one embedded slow
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

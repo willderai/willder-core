@@ -17,6 +17,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { MemoryStore } from "@/services/memory/memory-store";
 import type { RemoveFactInput } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "case510nul";
@@ -86,7 +87,7 @@ describe.skipIf(!QA_URL)("ingestMemory callers refuse a NUL before any row is wr
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: "QA 510" } });
     await db.user.create({
       data: { id: ADMIN, orgId: ORG, email: `${ADMIN}@case510.test`, role: "admin", clerkId: `clerk-${ADMIN}` },
@@ -103,7 +104,7 @@ describe.skipIf(!QA_URL)("ingestMemory callers refuse a NUL before any row is wr
     await db.grant.deleteMany({ where: { orgId: ORG } });
     await db.scope.deleteMany({ where: { orgId: ORG } });
     await db.user.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

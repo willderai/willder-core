@@ -113,7 +113,7 @@ Scripts, test gates, CI and the agent-side hook. Nothing in the running product 
 | `PROV_PYTHON` | `services/audit/prov-validator.testsupport.ts:12` | A Python 3.13 or newer with `scripts/prov/requirements.txt` installed; the PROV-JSON tests skip without it, and fail in CI. |
 | `LIVE_DB_TESTS`, `MEMORY_SERVICE_LIVE`, `HANDOFF_E2E_LIVE`, `HANDOFF_E2E_NEON_HTTP`, `HANDOFF_GATE_C_LIVE` | `services/access/scope-index-plan-shape.test.ts:91`, `services/memory/fact-resolve-route.live.test.ts:23`, `app/api/handoff-*.live.test.ts` | Opt-in gates for live suites. |
 | `HANDOFF_LIVE`, `FACTGOV_LIVE` | `scripts/check-handoff.ts:16`, `scripts/check-fact-governance.ts:31` | `1` makes a check script hit real services. |
-| `CHECK_BASE_URL`, `CHECK_PATH`, `CHROMIUM_PATH` | `scripts/check-app-shell-width.ts:14-32` | Layout check target and browser. |
+| `CHECK_BASE_URL`, `CHECK_PATH`, `CHECK_STORAGE_STATE`, `CHROMIUM_PATH` | `scripts/check-app-shell-width.ts:15-34` | Layout check target, signed-in session and browser. |
 | `SMOKE_SESSION_TOKEN` | `scripts/smoke-test.py:35` | Hosted smoke test session. |
 | `PORT` | `scripts/check-route-collision.sh:33` | Port for the boot check (default 4590). |
 | `WILLDER_TOKEN`, `WILLDER_URL` | `cli/hooks/willder-changes.mjs:73-74` | The Claude Code change-notice hook, in the agent's environment, not the server's. |

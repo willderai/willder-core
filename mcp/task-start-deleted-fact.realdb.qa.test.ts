@@ -19,6 +19,7 @@
 //
 // Set QA_DATABASE_URL to an ISOLATED, migrated test database; skips when unset.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 if (QA_URL) process.env.DATABASE_URL = QA_URL;
@@ -40,7 +41,7 @@ describe.skipIf(!QA_URL)("task-start leaves out only the writes of deleted fact 
     await db.$executeRaw`DELETE FROM memory_chunks WHERE "orgId" IN (${ORG}, ${OTHER_ORG})`;
     await db.factEdge.deleteMany({ where: { orgId: ORGS } });
     await db.changeEvent.deleteMany({ where: { orgId: ORGS } });
-    await db.org.deleteMany({ where: { id: ORGS } });
+    await deleteOrgsWithRetry(db, { where: { id: ORGS } });
   }
 
   beforeAll(async () => {

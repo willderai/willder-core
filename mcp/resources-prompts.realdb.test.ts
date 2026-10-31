@@ -29,6 +29,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
 import { NO_READABLE_MATCH_NOTE } from "./read-notes";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/guardrails", () => ({
   checkEpisodeCap: async () => undefined,
@@ -150,7 +151,7 @@ describe.skipIf(!QA_URL)("MCP resources and prompts, on a real read", { timeout:
     mcpUrl = mcp.url;
     closeMcp = mcp.close;
 
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     for (const [orgId, paths] of [
       [ORG, [ROOT, TEAM, TEAM_CHILD, PREFIX_SIBLING, WILDCARD_SIBLING]],
       [OTHER_ORG, [OTHER_ROOT, OTHER_TEAM]],
@@ -211,7 +212,7 @@ describe.skipIf(!QA_URL)("MCP resources and prompts, on a real read", { timeout:
     vi.unstubAllEnvs();
     await closeMcp?.();
     await service.stop();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

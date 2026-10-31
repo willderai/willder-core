@@ -23,6 +23,7 @@ import type { ChangeOp } from "@/lib/generated/prisma/enums";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { briefCorrectionName } from "@/services/memory/correction-names";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
@@ -300,7 +301,7 @@ describe.skipIf(!QA_URL)("a corrected fact names what replaced it, and its corre
       await db.changeEvent.deleteMany({ where: { orgId } });
       await db.factEdge.deleteMany({ where: { orgId } });
       await db.erasureSuppression.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
     await db.user.deleteMany({ where: { id: { in: [ADMIN, WRITER, READER, OTHER_ADMIN] } } });
   }

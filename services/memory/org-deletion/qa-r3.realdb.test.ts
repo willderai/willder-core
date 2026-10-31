@@ -9,6 +9,7 @@ import { Client } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 
@@ -28,7 +29,7 @@ describe.skipIf(!QA_URL)("QA r3: users-row deletion races", { timeout: 60_000 },
   let svc: typeof import("./request");
 
   async function reset() {
-    await db.org.deleteMany({ where: { id: { in: [A, B] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [A, B] } } });
     await db.user.deleteMany({ where: { id: { in: PEOPLE } } });
     await db.orgDeletion.deleteMany({ where: { orgId: { in: [A, B] } } });
     await db.orgAdminDeparture.deleteMany({ where: { clerkUserId: { in: PEOPLE.map(clerk) } } });

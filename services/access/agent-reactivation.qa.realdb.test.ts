@@ -22,6 +22,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 // `@/lib/db` singleton at import time, before beforeAll points DATABASE_URL at
 // the QA database.
 import { hashCapabilityToken } from "./capabilities";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 
@@ -115,7 +116,7 @@ describe.skipIf(!QA_URL)("agent reactivation against a real database", () => {
   afterAll(async () => {
     if (!db) return;
     await wipe();
-    await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+    await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
     await db.$disconnect();
   });
 

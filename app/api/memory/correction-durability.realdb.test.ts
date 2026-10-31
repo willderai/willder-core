@@ -19,6 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
 const session = vi.hoisted(() => ({ current: null as unknown }));
@@ -233,7 +234,7 @@ describe.skipIf(!QA_URL)("a correction is never lost, whatever fails after its r
     await db.changeEvent.deleteMany({ where: { orgId: ORG } });
     await db.factEdge.deleteMany({ where: { orgId: ORG } });
     await db.brief.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.user.deleteMany({ where: { id: { in: [WRITER, WRITER2] } } });
   }
 

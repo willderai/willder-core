@@ -3,10 +3,10 @@
 // panels ~150px; the sidebar now starts as its 72px icon rail below 768px.
 //
 // Measures the real shell (<aside> sidebar + <main data-app-shell>) at 390, 768 and
-// 1280px against a running app. /how-to-use renders inside the same authenticated-app
-// layout as /settings but needs no session, so it works against a local `next start`.
+// 1280px against a running app. Every route in that layout needs a session (proxy.ts), so
+// CHECK_STORAGE_STATE names a Playwright storage-state file from a signed-in browser.
 //
-// Run:  CHECK_BASE_URL=http://localhost:3000 npx tsx scripts/check-app-shell-width.ts
+// Run:  CHECK_BASE_URL=http://localhost:3000 CHECK_STORAGE_STATE=<file> npx tsx scripts/check-app-shell-width.ts
 // Needs the `playwright` package and a Chromium binary; CHROMIUM_PATH points at one
 // that is not the version Playwright pinned.
 import { chromium } from "playwright";
@@ -14,6 +14,7 @@ import { printableError } from "./lib/request-headers";
 
 const BASE_URL = (process.env.CHECK_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
 const PATH = process.env.CHECK_PATH || "/how-to-use";
+const STORAGE_STATE = process.env.CHECK_STORAGE_STATE;
 
 // The narrowest content column we accept at 390px. The rail leaves 318px; anything
 // under 300px means the full sidebar (or something else) is eating the viewport again.
@@ -37,7 +38,7 @@ function assert(cond: boolean, msg: string) {
 async function measure(width: number, expectedSidebarWidth: number) {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
   try {
-    const page = await browser.newPage({ viewport: { width, height: 844 } });
+    const page = await browser.newPage({ viewport: { width, height: 844 }, storageState: STORAGE_STATE });
     await page.goto(`${BASE_URL}${PATH}`, { waitUntil: "load" });
     await page
       .waitForFunction(
@@ -57,6 +58,10 @@ async function measure(width: number, expectedSidebarWidth: number) {
 }
 
 async function main() {
+  if (!STORAGE_STATE) {
+    console.error("Set CHECK_STORAGE_STATE to a signed-in browser's storage state: the app shell needs a session.");
+    process.exit(2);
+  }
   console.log(`\n  APP SHELL WIDTH CHECK (${BASE_URL}${PATH})\n`);
 
   const phone = await measure(390, 72);

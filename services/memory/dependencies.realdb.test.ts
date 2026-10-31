@@ -14,6 +14,7 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { ChangeOp, FactEdgeKind } from "@/lib/generated/prisma/enums";
 import type { AccessContext } from "@/services/access";
 import { seedMember } from "@/services/access/member.testsupport";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/lib/access-context", () => ({ requireAccessContext: vi.fn() }));
 
@@ -130,7 +131,7 @@ describe.skipIf(!QA_URL)("the dependency graph's read side, real Postgres", () =
     if (!QA_URL) return;
     for (const id of [ORG, OTHER_ORG]) {
       await db.auditLog.deleteMany({ where: { orgId: id } });
-      await db.org.deleteMany({ where: { id } });
+      await deleteOrgsWithRetry(db, { where: { id } });
     }
     await db.user.deleteMany({ where: { id: { in: [ADMIN, READER, OUTSIDER] } } });
     await db.$disconnect();

@@ -13,6 +13,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 vi.mock("@/services/memory/store", () => ({
   memory: {
@@ -102,12 +103,12 @@ describe.skipIf(!QA_URL)(
 
     afterAll(async () => {
       vi.unstubAllGlobals();
-      await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+      await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
       await db.$disconnect();
     });
 
     beforeEach(async () => {
-      await db.org.deleteMany({ where: { id: { in: [ORG, OTHER_ORG] } } });
+      await deleteOrgsWithRetry(db, { where: { id: { in: [ORG, OTHER_ORG] } } });
       for (const [orgId, paths] of [
         [ORG, [ROOT, OWN, SIBLING]],
         [OTHER_ORG, [OTHER_ROOT, OTHER_SCOPE]],

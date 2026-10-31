@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const SESSION_TIME_ZONES = ["America/Los_Angeles", "Asia/Tokyo"];
@@ -62,13 +63,13 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)("the served-vs-used log on a s
     await db.taskStartItemUse.deleteMany({ where: { orgId: ORG } });
     await db.taskStartServedItem.deleteMany({ where: { orgId: ORG } });
     await db.taskStartDelivery.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
   });
 
   afterAll(async () => {
     if (!db) return;
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 

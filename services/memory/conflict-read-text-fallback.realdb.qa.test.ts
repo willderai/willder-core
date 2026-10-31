@@ -19,6 +19,7 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import type { MemoryStore } from "./memory-store";
 import type { IngestInput, MemoryFact, SearchInput, SearchResult } from "@/types/memory";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 /** One episode the write path sent to the graph, as the memory service would hold it. */
 interface Episode {
@@ -187,7 +188,7 @@ describe.skipIf(!QA_URL)("conflict: a current stored version is never hidden by 
 
   afterAll(async () => {
     vi.unstubAllGlobals();
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.$disconnect();
   });
 
@@ -196,7 +197,7 @@ describe.skipIf(!QA_URL)("conflict: a current stored version is never hidden by 
     vi.mocked(globalThis.fetch)
       .mockReset()
       .mockImplementation(async () => new Response(JSON.stringify({ embedding: new Array(DIMENSIONS).fill(0.01) })));
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
     await db.org.create({ data: { id: ORG, name: ORG } });
     await db.scope.create({ data: { orgId: ORG, path: ROOT, name: ROOT } });
     await db.scope.create({ data: { orgId: ORG, path: SCOPE, name: "release" } });

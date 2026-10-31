@@ -25,6 +25,7 @@ vi.mock("@/services/connectors/source-readers", () => ({
 }));
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const TOKEN = "github_pat_scratch";
 // 4 items of ~200 KB: the listing is past the 512 KB a step may return, so it is stored.
@@ -174,7 +175,7 @@ describe.skipIf(!QA_URL)("a stored connector listing does not outlive its run, i
     await db.auditLog.deleteMany({ where: { orgId: ORG } });
     await db.erasureSuppression.deleteMany({ where: { orgId: ORG } });
     await db.personErasureRequest.deleteMany({ where: { orgId: ORG } });
-    await db.org.deleteMany({ where: { id: ORG } });
+    await deleteOrgsWithRetry(db, { where: { id: ORG } });
   };
 
   afterAll(async () => {

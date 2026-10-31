@@ -12,6 +12,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
+import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
 const QA_URL = process.env.QA_DATABASE_URL;
 const ORG = "qawidenall";
@@ -32,7 +33,7 @@ describe.skipIf(!QA_URL)("source widening with an everyone grant, real Postgres"
       await db.grant.deleteMany({ where: { orgId } });
       await db.scope.deleteMany({ where: { orgId } });
       await db.user.deleteMany({ where: { orgId } });
-      await db.org.deleteMany({ where: { id: orgId } });
+      await deleteOrgsWithRetry(db, { where: { id: orgId } });
     }
   }
 
