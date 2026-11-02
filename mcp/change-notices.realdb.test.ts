@@ -353,8 +353,8 @@ describe.skipIf(!QA_URL)("change notices on MCP tool results, against a real dat
   // Every test here writes its burst one call at a time, since a fact's versions must land in
   // order: 40 sequential MCP writes, 80 for the test that writes two scopes. Measured on
   // 2026-10-08 against PG16: 1.3 to 2.0 s for one burst and 2.7 s for two, locally; the
-  // two-scope test took about 3.5 s on CI and once passed vitest's 5 s default (shard 4/4,
-  // run 37748292735). At nice 10 on a loaded machine 18.7 s passed and 20 s timed out,
+  // two-scope test took about 3.5 s on CI and once passed vitest's 5 s default (on one
+  // CI shard). At nice 10 on a loaded machine 18.7 s passed and 20 s timed out,
   // so 60 s is three times the slowest pass.
   const BURST_TIMEOUT_MS = 60_000;
 

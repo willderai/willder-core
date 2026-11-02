@@ -4,14 +4,14 @@
 import { describe, expect, it } from "vitest";
 import { decisionToSentence, entitySeedToSentence, parseDecisions, parseEntitySeeds } from "./distilled-records";
 
-const SOURCE = "Jordan decided on 2026-09-24 that every crew run reads Willder memory after its control check.";
+const SOURCE = "Jordan decided on 2026-09-24 that every release job reads Willder memory after its setup check.";
 
 describe("parseDecisions", () => {
   it("keeps a decision that is a verbatim span, in the source's own spelling", () => {
     const [record] = parseDecisions(
       [
         {
-          decision: "EVERY crew run reads  Willder memory\nafter its control check.",
+          decision: "EVERY release job reads  Willder memory\nafter its setup check.",
           actor: "jordan",
           date: "2026-09-24",
         },
@@ -20,45 +20,48 @@ describe("parseDecisions", () => {
     );
 
     expect(record).toEqual({
-      decision: "every crew run reads Willder memory after its control check",
+      decision: "every release job reads Willder memory after its setup check",
       actor: "Jordan",
       date: "2026-09-24",
     });
   });
 
   it("drops a decision the source does not contain word for word", () => {
-    expect(parseDecisions([{ decision: "crew runs consult memory after the control check" }], SOURCE)).toEqual([]);
+    expect(parseDecisions([{ decision: "release jobs consult memory after the setup check" }], SOURCE)).toEqual([]);
   });
 
   it("drops a decision too short to act on", () => {
-    expect(parseDecisions([{ decision: "every crew" }], SOURCE)).toEqual([]);
+    expect(parseDecisions([{ decision: "every release" }], SOURCE)).toEqual([]);
   });
 
   it("drops an actor or date the source does not contain, and keeps the decision", () => {
     const [record] = parseDecisions(
-      [{ decision: "every crew run reads Willder memory", actor: "Morgan", date: "2026-09-25" }],
+      [{ decision: "every release job reads Willder memory", actor: "Morgan", date: "2026-09-25" }],
       SOURCE,
     );
 
-    expect(record).toEqual({ decision: "every crew run reads Willder memory" });
+    expect(record).toEqual({ decision: "every release job reads Willder memory" });
   });
 
   it("drops a date that is not YYYY-MM-DD even when the source contains it", () => {
-    const [record] = parseDecisions([{ decision: "every crew run reads Willder memory", date: "2026-09" }], SOURCE);
+    const [record] = parseDecisions([{ decision: "every release job reads Willder memory", date: "2026-09" }], SOURCE);
 
     expect(record!.date).toBeUndefined();
   });
 
   it("ignores anything that is not a decision object", () => {
-    expect(parseDecisions("every crew run", SOURCE)).toEqual([]);
+    expect(parseDecisions("every release job", SOURCE)).toEqual([]);
     expect(parseDecisions([null, 3, { actor: "Jordan" }], SOURCE)).toEqual([]);
   });
 
   it("cuts the span from the source correctly after a character that lengthens when lowercased", () => {
     // "İ" (U+0130) lowercases to two characters; the span must still start at "every".
-    const [record] = parseDecisions([{ decision: "every crew run reads memory" }], "İ: every crew run reads memory");
+    const [record] = parseDecisions(
+      [{ decision: "every release job reads memory" }],
+      "İ: every release job reads memory",
+    );
 
-    expect(record!.decision).toBe("every crew run reads memory");
+    expect(record!.decision).toBe("every release job reads memory");
   });
 });
 
@@ -89,8 +92,8 @@ describe("entitySeedToSentence", () => {
       }),
     ).toBe("ED: the emergency department that referred Elena Park.");
     expect(
-      entitySeedToSentence({ name: "Willder memory", type: "Project", description: "stores crew decisions" }),
-    ).toBe("Willder memory: stores crew decisions.");
+      entitySeedToSentence({ name: "Willder memory", type: "Project", description: "stores team decisions" }),
+    ).toBe("Willder memory: stores team decisions.");
   });
 
   it("never states the seed's type", () => {
@@ -108,11 +111,11 @@ describe("entitySeedToSentence", () => {
 describe("parseEntitySeeds", () => {
   it("keeps a seed with a listed type and a name the source contains", () => {
     const seeds = parseEntitySeeds(
-      [{ name: "willder memory", type: "Project", description: "stores crew decisions." }],
+      [{ name: "willder memory", type: "Project", description: "stores team decisions." }],
       SOURCE,
     );
 
-    expect(seeds).toEqual([{ name: "Willder memory", type: "Project", description: "stores crew decisions" }]);
+    expect(seeds).toEqual([{ name: "Willder memory", type: "Project", description: "stores team decisions" }]);
   });
 
   it("never seeds a Decision: decisions are stored as decision records", () => {
@@ -126,7 +129,7 @@ describe("parseEntitySeeds", () => {
   });
 
   it("never seeds a decision's actor under any type", () => {
-    const decisions = parseDecisions([{ decision: "every crew run reads Willder memory", actor: "Jordan" }], SOURCE);
+    const decisions = parseDecisions([{ decision: "every release job reads Willder memory", actor: "Jordan" }], SOURCE);
 
     expect(
       parseEntitySeeds(

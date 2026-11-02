@@ -236,7 +236,7 @@ def test_ingest_decision_record_is_stored_verbatim_even_when_the_extractor_found
     client, headers, fake_graphiti, monkeypatch
 ):
     # The extractor paraphrases a dated decision into something like "Jordan
-    # is a Decision that specifies operational procedures for crew runs". A
+    # is a Decision that specifies operational procedures for release jobs". A
     # decision record must be written in its own words whether or not
     # extraction produced edges of its own.
     calls = []
@@ -250,7 +250,7 @@ def test_ingest_decision_record_is_stored_verbatim_even_when_the_extractor_found
         nodes = ["n1"]
         edges = [
             _FakeEdge(
-                "e1", "Jordan is a Decision that specifies operational procedures for crew runs"
+                "e1", "Jordan is a Decision that specifies operational procedures for release jobs"
             )
         ]
 
@@ -260,7 +260,7 @@ def test_ingest_decision_record_is_stored_verbatim_even_when_the_extractor_found
 
     monkeypatch.setattr(main, "ensure_graph_visible", _spy)
     monkeypatch.setattr(fake_graphiti, "add_episode", _add_episode)
-    decision = "Decision by Jordan on 2026-09-24: every crew run reads Willder memory after its control check."
+    decision = "Decision by Jordan on 2026-09-24: every release job reads Willder memory after its setup check."
 
     r = client.post(
         "/ingest",

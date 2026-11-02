@@ -1,10 +1,10 @@
 // Fact fidelity for a decision written through memory_ingest.
 //
-// The sentence "Jordan decided on 2026-09-24 that every crew run reads Willder
+// The sentence "Jordan decided on 2026-09-24 that every release job reads Willder
 // memory ..." must not come back from memory as two facts nobody can use:
-// "Jordan is a Decision that specifies operational procedures for crew runs"
-// and "Willder memory is a Project that involves data management for crew
-// runs". That loses what was decided, when, and by whom, and types a person as
+// "Jordan is a Decision that specifies operational procedures for release jobs"
+// and "Willder memory is a Project that involves data management for release
+// jobs". That loses what was decided, when, and by whom, and types a person as
 // a Decision. These tests run that exact sentence through the real ingest
 // pipeline with the distiller's model mocked, and pin what reaches the store.
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,28 +52,28 @@ import { graphitiStore, memory } from "@/services/memory";
 import { memoryIngest, runMemoryIngest } from "./inngest";
 import type { IngestInput } from "@/types/memory";
 
-// Exactly what scripts/willder-memory.mjs sent: the sentence plus its suffix.
+// Exactly what a memory client sends: the sentence plus the suffix naming who recorded it.
 const WRITTEN =
-  "Jordan decided on 2026-09-24 that every crew run reads Willder memory after its control check " +
-  "and writes real decisions and handoffs before its run-end row, measuring whether a read " +
-  "changed the run action (recorded by claude)";
+  "Jordan decided on 2026-09-24 that every release job reads Willder memory before it starts " +
+  "and writes real decisions and handoffs before it finishes, measuring whether a read " +
+  "changed what the job did (recorded by an agent)";
 
 const DECIDED =
-  "every crew run reads Willder memory after its control check and writes real decisions and " +
-  "handoffs before its run-end row, measuring whether a read changed the run action";
+  "every release job reads Willder memory before it starts and writes real decisions and " +
+  "handoffs before it finishes, measuring whether a read changed what the job did";
 
 /** memory_ingest's own input (mcp/tools.ts), for this write. */
 function mcpWrite(content = WRITTEN): IngestInput {
   return {
     groupId: "org_1",
     content,
-    name: "crew memory protocol",
+    name: "release memory protocol",
     actorType: "agent",
     origin: "mcp",
-    actorId: "agent_claude",
+    actorId: "agent_writer",
     actorName: "MCP session",
     source: "mcp",
-    scopePath: "org_1.crew.docs",
+    scopePath: "org_1.team.docs",
   };
 }
 
@@ -123,7 +123,7 @@ describe("a decision written through memory_ingest", () => {
     expect(decisions).toHaveLength(1);
     expect(decisions[0]!.content).toBe(`Decision by Jordan on 2026-09-24: ${DECIDED}.`);
     // At the writer's own provenance, not demoted to extraction tier.
-    expect(decisions[0]).toMatchObject({ actorType: "agent", actorId: "agent_claude", scopePath: "org_1.crew.docs" });
+    expect(decisions[0]).toMatchObject({ actorType: "agent", actorId: "agent_writer", scopePath: "org_1.team.docs" });
   });
 
   it("does not store the observed mistyped seeds, and still stores the decision beside them", async () => {
@@ -131,8 +131,8 @@ describe("a decision written through memory_ingest", () => {
     distillerReply.mockReturnValue(
       reply({
         entities: [
-          { name: "Jordan", type: "Decision", description: "specifies operational procedures for crew runs" },
-          { name: "Willder memory", type: "Project", description: "involves data management for crew runs" },
+          { name: "Jordan", type: "Decision", description: "specifies operational procedures for release jobs" },
+          { name: "Willder memory", type: "Project", description: "involves data management for release jobs" },
         ],
         decisions: [{ decision: DECIDED, actor: "Jordan", date: "2026-09-24" }],
       }),
@@ -148,8 +148,8 @@ describe("a decision written through memory_ingest", () => {
   it("drops a decision the model reworded instead of storing its paraphrase", async () => {
     distillerReply.mockReturnValue(
       reply({
-        facts: ["Jordan set a memory procedure for crew runs."],
-        decisions: [{ decision: "crew runs must use Willder memory operationally", actor: "Jordan" }],
+        facts: ["Jordan set a memory procedure for release jobs."],
+        decisions: [{ decision: "release jobs must use Willder memory operationally", actor: "Jordan" }],
       }),
     );
 
@@ -161,16 +161,16 @@ describe("a decision written through memory_ingest", () => {
   });
 
   it("is distilled even when short, because memory_ingest is a deliberate write", async () => {
-    const short = "Jordan decided on 2026-09-24 that crew runs read memory first.";
+    const short = "Jordan decided on 2026-09-24 that release jobs read memory first.";
     distillerReply.mockReturnValue(
-      reply({ decisions: [{ decision: "crew runs read memory first", actor: "Jordan", date: "2026-09-24" }] }),
+      reply({ decisions: [{ decision: "release jobs read memory first", actor: "Jordan", date: "2026-09-24" }] }),
     );
 
     await runMemoryIngest(mcpWrite(short));
 
     expect(distillerReply).toHaveBeenCalledTimes(1);
     expect(storedWrites().map((w) => w.content)).toContain(
-      "Decision by Jordan on 2026-09-24: crew runs read memory first.",
+      "Decision by Jordan on 2026-09-24: release jobs read memory first.",
     );
   });
 
@@ -196,8 +196,8 @@ describe("a decision written through the queued memoryIngest function", () => {
     expect(decisions[0]).toMatchObject({
       content: `Decision by Jordan on 2026-09-24: ${DECIDED}.`,
       actorType: "agent",
-      actorId: "agent_claude",
-      scopePath: "org_1.crew.docs",
+      actorId: "agent_writer",
+      scopePath: "org_1.team.docs",
     });
     expect(step.writeStep.get(decisions[0]!)).toBe("graphiti-add-decisions");
     expect(result).toMatchObject({ decisionCount: 1 });

@@ -7,7 +7,7 @@
 // tables while the zombie body inserts into them. The insert holds a KEY SHARE lock on
 // the org row and its own new child rows; the cascade holds the org row and waits on a
 // child row: Postgres reports a deadlock (40P01) and the cleanup fails the suite, hiding
-// the timeout that caused it (wave 6i, .benchmark-runs/wave-6i/deadlock-investigation).
+// the timeout that caused it.
 //
 // The cleanup here runs the same delete with a short `lock_timeout`, well under the
 // server's `deadlock_timeout` (1 s by default). A cleanup that would wait on the zombie
