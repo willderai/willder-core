@@ -26,6 +26,9 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// Real writes, corrections and queued jobs per test: 4.5 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
 const session = vi.hoisted(() => ({ current: null as unknown }));

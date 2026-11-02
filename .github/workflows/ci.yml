@@ -353,8 +353,8 @@ jobs:
           exit 1
       # /health is green as soon as Neo4j answers, while the service's startup warm-up
       # (Graphiti's index build and the BGE weights) still runs in the background. A
-      # first test that lands then pays that cost inside its 5 s timeout (6.2 s on a
-      # cold runner). A search waits for the same shared build and embeds a query, so
+      # first test that lands then pays that cost inside its test limit (6.2 s on a
+      # cold runner, past the 5 s limit of the day). A search waits for the same shared build and embeds a query, so
       # once it answers the service is warm. The group holds nothing; the answer is empty.
       - name: Wait for the memory-service warm-up
         run: |

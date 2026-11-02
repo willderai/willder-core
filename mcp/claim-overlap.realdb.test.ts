@@ -164,8 +164,10 @@ describe.skipIf(!QA_URL)("claim overlap between agents, against a real database"
     const told = replies.map((r) => r.content[0]!.text.includes("Overlapping files detected"));
 
     expect(told.filter(Boolean)).toHaveLength(1);
-    const earlier = told[0] ? south : north;
-    expect(await nextNotice(earlier)).toContain("- create claim_overlap ");
+    // The notice may ride on the earlier side's own claim reply when its commit lands first.
+    const earlier = told[0] ? 1 : 0;
+    const heard = [...replies[earlier]!.content.map((c) => c.text), await nextNotice([north, south][earlier]!)];
+    expect(heard.join("\n")).toContain("- create claim_overlap ");
     expect(await overlapEvents()).toHaveLength(1);
   });
 

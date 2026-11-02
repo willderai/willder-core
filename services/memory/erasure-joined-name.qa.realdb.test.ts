@@ -28,6 +28,9 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 import { listAsTheApp } from "@/services/memory/erasure-suppression.testsupport";
 
+// Each case runs real erasures over its probe rows, in Postgres and in the digest rule: 3.8 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 vi.mock("./store", () => ({
   memory: {},
   graphitiStore: {

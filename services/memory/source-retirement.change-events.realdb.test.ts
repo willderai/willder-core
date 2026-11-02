@@ -22,6 +22,9 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// A real retirement and change-feed read: under 1 s normally, timed out at 5 s in two runs.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const QA_URL = process.env.QA_DATABASE_URL;
 
 const ORG = "org-retire-feed";

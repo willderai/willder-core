@@ -22,6 +22,9 @@ export default defineConfig({
           name: "node",
           environment: "node",
           include: ["**/*.test.ts"],
+          // A ceiling for a hung test, not a speed claim. Under CI load, 105 tests across 60 files
+          // passed the 5 s default at random, too many to size one by one.
+          testTimeout: 30_000,
           // One template database per run, one copy of it per worker, so no
           // two workers share a database (tests/setup/test-databases.ts).
           // Without QA_DATABASE_URL both are no-ops. Only this project holds

@@ -1,7 +1,7 @@
 // github.real-scale.test.ts syncs a 900-item fake GitHub repository several times over, one
-// awaited provider response after another, under vitest's default 5 s test timeout. On a loaded
-// machine each await takes longer and its sync tests timed out while passing alone (the fix's
-// notes: "a load timeout in GitHub sync that passes alone").
+// awaited provider response after another. On a loaded machine each await takes longer and its
+// sync tests timed out at vitest's default 5 s while passing alone (the fix's notes: "a
+// load timeout in GitHub sync that passes alone").
 //
 // This runs that file in its own vitest with every provider response body taking 40 ms to read
 // (standing in for a loaded machine): its tests must still pass. They do once the file declares a

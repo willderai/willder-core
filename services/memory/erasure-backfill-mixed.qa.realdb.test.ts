@@ -15,6 +15,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import type { AccessContext } from "@/services/access";
 
+// Seeds every org through the real erasure paths before the backfill: 4.9 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const graphErase = vi.fn();
 const graphPlan = vi.fn(async () => [] as string[]);
 vi.mock("./store", () => ({
@@ -242,7 +245,7 @@ describe.skipIf(!QA_URL)("QA: the backfill over a database with every kind of er
         ),
     );
     const running = erasePerson(admin("qa_mix_running"), { contactId: "qa_mix_running_person" });
-    await vi.waitFor(() => expect(graphErase).toHaveBeenCalledTimes(callsBefore + 1));
+    await vi.waitFor(() => expect(graphErase).toHaveBeenCalledTimes(callsBefore + 1), { timeout: 20_000 });
 
     // The migration: no applied markers yet, then the backfill.
     await db.erasureSuppressionApplied.deleteMany({ where: { orgId: { in: [...ORGS] } } });

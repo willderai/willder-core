@@ -22,6 +22,9 @@ import type { AccessContext } from "@/services/access";
 import { briefCorrectionName } from "@/services/memory/correction-names";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// Sequential seeding, a real correction, then a real erasure per test: median 0.4 s; this file took 106 s against its usual 6.6 s at a load peak.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 /** Work queued by `after()`, in queue order. */
 const queuedJobs = vi.hoisted(() => [] as (() => Promise<unknown>)[]);
 const session = vi.hoisted(() => ({ current: null as unknown }));

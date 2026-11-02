@@ -1,7 +1,7 @@
 // The specific values a question names, and when a stored text holds one
 // (services/memory/specific-values.ts). The Postgres side of the same rule is checked
 // against this one in mcp/no-readable-match.realdb.test.ts.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAX_SPECIFIC_VALUES,
   normalizeForMatch,
@@ -11,6 +11,9 @@ import {
   type SpecificValue,
 } from "./specific-values";
 import { SPELLING_CASES } from "./specific-values.cases.testsupport";
+
+// One case sweeps every Unicode code point with an expect each: 1.4 s at the median, 4.4 s seen under load.
+vi.setConfig({ testTimeout: 30_000 });
 
 const keys = (question: string) => specificValuesIn(question).map((v) => `${v.kind}:${v.key}`);
 const only = (question: string): SpecificValue => {

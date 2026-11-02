@@ -22,6 +22,9 @@ import type { AccessContext } from "@/services/access";
 import type { DriveFile } from "@/services/connectors/gdrive";
 import { listAsTheApp } from "@/services/memory/erasure-suppression.testsupport";
 
+// A real sync, erasure and second sync per case: 3.7 s seen, timed out at 5 s under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const graphErase = vi.fn();
 const graphIngest = vi.fn();
 const graphIngestBulk = vi.fn();

@@ -39,7 +39,7 @@ session then leads with what earlier sessions of that task decided and wrote.
 
 ## Verify the connection
 
-**Settings → MCP** should list `willder` as connected with its tools enumerated. Ask the agent to run `memory_query`.
+**Customize** in Cursor's sidebar should show `willder` with its toggle on ([Cursor's MCP docs](https://cursor.com/docs/mcp), read 2026-10-30). Ask the agent to run `memory_query`.
 
 ## Local (self-hosted)
 
@@ -111,7 +111,7 @@ Cursor does not show why the server exited. To see it, run the server the way Cu
 prints `willder MCP server failed: WILLDER_CAPABILITY_TOKEN is not a live token in this database
 (unknown, expired or revoked)`, with the command that mints a fresh one.
 
-**Not checked:** the Cursor desktop app's **Settings → MCP** screen and its approval prompt; only
+**Not checked:** the Cursor desktop app's **Customize** screen and its approval prompt; only
 the `cursor-agent` command line was run. A token revoked while a session's server is already
 running was not tried here; the server answers that case's next call with `Access denied`
 ([self-host.md](../self-host.md)), but how Cursor shows it was not seen.

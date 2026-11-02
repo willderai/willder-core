@@ -35,6 +35,9 @@ import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { IngestInput } from "@/types/memory";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// MCP round trips and Postgres per call: median 0.4 s, 2.4 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 vi.mock("@/services/memory/store", () => ({
   memory: { ingest: vi.fn().mockResolvedValue({ episodeId: "ep-hybrid" }) },
   graphitiStore: { ingest: vi.fn().mockResolvedValue({ episodeId: "ep-graph" }), ingestBulk: vi.fn() },
@@ -56,6 +59,9 @@ interface ToolResult {
   content: { type: string; text: string }[];
   isError?: boolean;
 }
+
+/** Under the test timeout, so a wait that fails says what it waited for. */
+const WAIT = { timeout: 20_000 };
 
 const renewal = { content: "Acme renewed its contract for 2027.", name: "Acme Corp", scopePath: SCOPE };
 
@@ -156,9 +162,12 @@ describe.skipIf(!QA_URL)("memory_ingest with an idempotency key, against a real 
       await held;
     };
     const writer = await connectAs(WRITER);
-    const calls = Array.from({ length: 5 }, () => ingest(writer, { ...renewal, idempotencyKey: "renewal-burst" }));
-    await vi.waitFor(() => expect(entered).toBeGreaterThan(0));
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    let answered = 0;
+    const calls = Array.from({ length: 5 }, () =>
+      ingest(writer, { ...renewal, idempotencyKey: "renewal-burst" }).finally(() => (answered += 1)),
+    );
+    // Every call has reached the queue or been answered, so none arrives after the release.
+    await vi.waitFor(() => expect(entered + answered).toBe(5), WAIT);
     release();
     const replies = await Promise.all(calls);
 
@@ -287,14 +296,14 @@ describe.skipIf(!QA_URL)("memory_ingest with an idempotency key, against a real 
         : Promise.resolve();
     const writer = await connectAs(WRITER);
     const outlived = ingest(writer, { ...renewal, idempotencyKey: "renewal-5" });
-    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    await vi.waitFor(() => expect(gates).toHaveLength(1), WAIT);
     await db.memoryIngestKey.updateMany({
       where: { orgId: ORG },
       data: { claimedAt: new Date(Date.now() - 60 * 60 * 1000) },
     });
 
     const takeover = ingest(writer, { ...renewal, idempotencyKey: "renewal-5" });
-    await vi.waitFor(() => expect(gates).toHaveLength(2));
+    await vi.waitFor(() => expect(gates).toHaveLength(2), WAIT);
     gates[0]!.fail(new Error("queue unavailable"));
     expect((await outlived).isError).toBe(true);
 

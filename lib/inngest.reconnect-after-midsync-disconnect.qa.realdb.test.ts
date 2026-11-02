@@ -32,6 +32,9 @@
 // DATABASE_URL that points at a live database. Skips cleanly without it.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+// Each case drives whole connect and sync runs against Postgres: timed out at 5 s in two runs.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 vi.mock("@/services/connectors/source-readers", () => ({
   readersAtSource: vi.fn(async () => ({ kind: "known", readers: [{ kind: "everyone" }] })),
 }));

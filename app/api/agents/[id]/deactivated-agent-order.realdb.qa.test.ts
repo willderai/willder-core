@@ -12,6 +12,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// The first case pays the route's cold import: 4.3 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const QA_URL = process.env.QA_DATABASE_URL;
 
 const ORG = "deactivatedorder"; // ltree-safe

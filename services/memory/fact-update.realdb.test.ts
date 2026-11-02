@@ -26,6 +26,9 @@ import type { AccessContext } from "@/services/access";
 import type { IngestInput } from "@/types/memory";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// Real write paths, with real waits past the contention window: median 1.2 s, timed out at 5 s under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
 vi.mock("@/services/access/derived-writes", () => import("@/services/access/derived-writes.testsupport"));

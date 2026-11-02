@@ -31,6 +31,9 @@ import type { AccessContext } from "@/services/access";
 import type { DemoTarget, RunTagInventory } from "./run-tag-cleanup";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// Real deletes of a seeded run through the product's path: 4.4 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 // This suite moves one agent across sibling or parent and child scopes in one session, which
 // the derived-write rule refuses by design; that rule is tested in mcp/derived-write.realdb.test.ts.
 vi.mock("@/services/access/derived-writes", () => import("@/services/access/derived-writes.testsupport"));

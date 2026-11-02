@@ -7,12 +7,15 @@
 //
 // Real: Postgres, the capability check, the task-start read and the block as served
 // (taskStartNotice), with the ranking text built exactly as the notice route builds it.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import type { AccessContext } from "@/services/access";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
+
+// 200-odd sequential fact writes before each read: median 0.5 s, 4.9 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
 
 const QA_URL = process.env.QA_DATABASE_URL;
 

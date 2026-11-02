@@ -167,7 +167,7 @@ Cursor was started with, so it never lands in the file:
 }
 ```
 
-Expected: in Cursor's MCP settings, `willder` shows a green status and the tool list.
+Expected: under **Customize** in Cursor's sidebar, `willder` is listed with its toggle on.
 
 ### Check from the terminal (any client)
 

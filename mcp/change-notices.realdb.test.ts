@@ -23,6 +23,9 @@ import { PrismaClient } from "@/lib/generated/prisma/client";
 import { hashCapabilityToken } from "@/services/access/capabilities";
 import { EmptyGraphMemoryService } from "./memory-service-stub.testsupport";
 
+// Real MCP calls and audit writes per test: median up to 2.2 s, and a timed-out body keeps writing into the next test (expected 2 to be 1).
+vi.setConfig({ testTimeout: 30_000 });
+
 // Lets one test make the notice's count of waiting changes fail, to prove nothing the
 // notice consumed is lost with it. Every other test runs the real function.
 const waitingCount = vi.hoisted(() => ({ failNext: false }));
@@ -351,8 +354,9 @@ describe.skipIf(!QA_URL)("change notices on MCP tool results, against a real dat
   // order: 40 sequential MCP writes, 80 for the test that writes two scopes. Measured on
   // 2026-10-08 against PG16: 1.3 to 2.0 s for one burst and 2.7 s for two, locally; the
   // two-scope test took about 3.5 s on CI and once passed vitest's 5 s default (shard 4/4,
-  // run 37748292735). 20 s leaves room for a CI runner several times slower than that.
-  const BURST_TIMEOUT_MS = 20_000;
+  // run 37748292735). At nice 10 on a loaded machine 18.7 s passed and 20 s timed out,
+  // so 60 s is three times the slowest pass.
+  const BURST_TIMEOUT_MS = 60_000;
 
   describe("a burst of facts written through memory_ingest by several agents", { timeout: BURST_TIMEOUT_MS }, () => {
     // The shape of a pull request's review history (scripts/realdata/github-history.ts):

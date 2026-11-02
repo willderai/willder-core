@@ -25,6 +25,9 @@ import type { AccessContext } from "@/services/access";
 import { PROV_PYTHON, validateProv } from "@/services/audit/prov-validator.testsupport";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// Calls the route once per refusal case, in a suite of real audit histories: timed out at 5 s in two runs.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const QA_URL = process.env.QA_DATABASE_URL;
 const RUN = randomUUID().slice(0, 8);
 const ORG = `prov${RUN}`;

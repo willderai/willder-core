@@ -14,6 +14,9 @@ import { SOURCE_PAGE_SIZE } from "@/lib/source-lists";
 import { ACCOUNT_PAGE_SIZE } from "@/lib/integration-lists";
 import { deleteOrgsWithRetry } from "@/lib/org-cleanup.testsupport";
 
+// One row at a time, then every page in every order through the real routes: 4.3 s seen under load.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
+
 const QA_URL = process.env.QA_DATABASE_URL;
 
 const ORG = "sourcespageedges";
