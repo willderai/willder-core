@@ -1,11 +1,79 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/logo_full_dark.svg">
+    <img src="public/logo_full_light.svg" alt="Willder" width="300">
+  </picture>
+</p>
+
 # Willder
 
-**Apps, Agents, Teams Synced. Access decided in the database, never in a prompt.**
+**Apps, Agents, Teams Synced.**
 
-One memory for every agent you run. Each agent holds its own scoped, expiring token; every
-read and write goes through one database check and lands in the audit; revoke a token and
-its next call is refused. Connect your Claude Code or Cursor agent over MCP in five minutes.
+Willder is a context layer that syncs your apps, agents and teams, with access control on every
+call and real-time coordination: what one agent writes, the others read on their next call. Each
+agent holds its own scoped, expiring token; its memory reads and writes pass one check and land
+in the audit log; revoke a token and its next call is refused. Connect your Claude Code or
+Cursor agent over MCP in five minutes.
 
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="https://github.com/willderai/willder-core/releases"><img src="https://img.shields.io/github/v/release/willderai/willder-core" alt="Latest release"></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-server-0b6e4f" alt="MCP server"></a>
+  <a href="https://github.com/willderai/willder-core/discussions"><img src="https://img.shields.io/github/discussions/willderai/willder-core" alt="Discussions"></a>
+</p>
+
+<p align="center">
+  <a href="https://willder.ai">Website</a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
+  <a href="docs/connect/README.md">Connect a client</a> ·
+  <a href="https://github.com/willderai/willder-core/discussions">Discussions</a>
+</p>
+
+<p align="center">
+  <img src="docs/images/willder-demo.gif" alt="Claude Code saves that launch is Friday. Codex asks on its next call and gets it, with who wrote it. A marketing agent asks the same question and gets No facts found. The fact is changed to Monday once, and Codex's next read says Monday. The timeline shows who wrote it and who read it." width="880">
+</p>
+
+## What it does
+
+1. **The right context, unasked.** At the start of a task an agent gets a short brief of what
+   matters for it: the scope's rules, decisions and recent writes, ranked by the task's words.
+   Queries search by words, by meaning and by links in the graph.
+   [Task-start briefs](docs/architecture.md#change-notices-and-task-start-briefs),
+   [hybrid retrieval](docs/architecture.md#hybrid-retrieval).
+2. **One memory across every agent.** What Claude Code saves, Codex reads on its next call, with
+   who wrote it. Change a fact once and every agent reads the new version.
+   [Versions and conflicts](docs/architecture.md#versions-and-conflicts).
+3. **Connectors into scopes.** GitHub, Google Drive, Slack, Figma and PostHog sync into a scope
+   you choose, under that scope's rules. [services/connectors/](services/connectors/).
+4. **Access control.** Each agent holds its own scoped, expiring token. Its memory reads and
+   writes pass one check and land in the audit log; a revoked token is refused on its next call.
+   What the check does not cover is listed under [Limits](#limits).
+   [The single check](docs/architecture.md#access-model-and-the-single-check).
+5. **Set up in minutes.** One command connects Claude Code; Codex, Cursor and other clients
+   have a page each. [Connect a client](docs/connect/README.md).
+6. **Memory you can see.** Every fact keeps who wrote it, where it came from, what it replaced
+   and which agents first read it. [Audit and provenance](docs/architecture.md#audit-and-provenance).
+
+## How it works
+
+```mermaid
+flowchart LR
+  accTitle: The parts of Willder and how a request moves through them.
+  accDescr: An MCP client with a capability token and a person in the web app both reach the memory operations. check() decides each guarded operation against Postgres and writes an audit row. Allowed operations read and write the Postgres stores, including pgvector, and the graph through the memory service, which owns Neo4j and the embedding model.
+  mcp["MCP client: agent token"] --> ops["Memory operations"]
+  web["Web app: signed-in person"] --> ops
+  ops --> chk{"check()"}
+  chk --> pg[("Postgres: scopes, grants, tokens, audit_log, versions, pgvector chunks")]
+  chk -- allow --> pg
+  chk -- allow --> ms["Memory service: FastAPI, BGE-384 embeddings"]
+  ms --> neo[("Neo4j via Graphiti: facts and relations")]
+```
+
+Deep dives: [architecture](docs/architecture.md), [hybrid retrieval](docs/willder_memory_hybrid.md),
+[conflict resolution](docs/willder_conflict_resolution.md), [database](docs/willder_database.md),
+[API](docs/willder_api.md), [export format](docs/export-format.md), [self-hosting](docs/self-host.md).
 
 ## Why
 
