@@ -24,7 +24,7 @@
     "lint": "eslint",
     "lint:dead": "knip",
     "format:check": "npx --yes prettier@3.3.3 --check .",
-    "scope-gate:check": "eslint --config eslint.scope-gate.config.mjs . && eslint --quiet --config eslint.memory-access.config.mjs .",
+    "scope-gate:check": "eslint --config eslint/eslint.scope-gate.config.mjs . && eslint --quiet --config eslint/eslint.memory-access.config.mjs .",
     "route-collision:check": "bash scripts/check-route-collision.sh",
     "doc-anchors:check": "node scripts/check-doc-anchors.mjs",
     "doc-paths:check": "node scripts/check-doc-paths.mjs",

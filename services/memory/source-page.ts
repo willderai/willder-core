@@ -4,7 +4,7 @@
  *
  * Sources are connector configuration, not memory, but their search and order read
  * the destination scope path, and raw SQL naming a scope path lives here or in
- * services/access (eslint.scope-gate.mjs). This returns ids only; the route reads the
+ * services/access (eslint/eslint.scope-gate.mjs). This returns ids only; the route reads the
  * rows through its own column allowlist, so no credential column is ever selected here.
  *
  * The one rule: the org condition bounds the page, the matching count and the list's

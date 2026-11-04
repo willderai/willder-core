@@ -16,7 +16,7 @@
 //
 // Use it when the decision depends on the record (its scope is the one to ask
 // about). When it does not, decide first and look up afterwards. The lookup gate
-// (eslint.lookup-gate.mjs) holds every API route to one of the two.
+// (eslint/eslint.lookup-gate.mjs) holds every API route to one of the two.
 import { can, check, isValidLtreePath, orgRootPath } from "./check";
 import type { AccessAction, AccessContext, AccessDecision } from "./check";
 

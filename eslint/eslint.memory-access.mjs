@@ -71,8 +71,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_SCHEMA = fileURLToPath(new URL("./prisma/schema.prisma", import.meta.url));
-const REPO_ROOT = fileURLToPath(new URL(".", import.meta.url));
+const DEFAULT_SCHEMA = fileURLToPath(new URL("../prisma/schema.prisma", import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DB_MODULE = path.join(REPO_ROOT, "lib", "db");
 const SCRIPT_EXTENSION = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
@@ -489,7 +489,7 @@ export const memoryAccessGate = {
     "lib/generated/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "eslint.memory-access.mjs",
+    "eslint/eslint.memory-access.mjs",
   ],
   plugins: { "memory-access": { rules: { "no-memory-query-outside-authorizer": noMemoryQueryOutsideAuthorizer } } },
   rules: { "memory-access/no-memory-query-outside-authorizer": "error" },

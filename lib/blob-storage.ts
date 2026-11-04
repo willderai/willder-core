@@ -19,7 +19,7 @@
 // This file makes the first and last rules impossible to break rather than
 // merely detected: `access` and the suffix are not parameters, they are written
 // once, here. Every other module goes through these functions, and
-// `eslint.blob-access.mjs` fails the build on any other import of the storage SDK.
+// `eslint/eslint.blob-access.mjs` fails the build on any other import of the storage SDK.
 
 /** What a caller needs back from a stored blob: where to read it again. */
 export interface StoredBlob {

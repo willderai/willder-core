@@ -1,4 +1,4 @@
-// Fixture for eslint.memory-access.test.ts: every query shape the memory-access
+// Fixture for eslint/eslint.memory-access.test.ts: every query shape the memory-access
 // gate must report, written the way a route outside the authorizer would write it.
 // Linted from text under an app/ path; never compiled or imported.
 import { Prisma } from "@/lib/generated/prisma/client";

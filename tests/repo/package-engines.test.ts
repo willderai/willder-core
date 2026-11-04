@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 import semver from "semver";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = __dirname;
+const repoRoot = resolve(__dirname, "..", "..");
 const readJson = (file: string) => JSON.parse(readFileSync(resolve(repoRoot, file), "utf8"));
 
 const pkg = readJson("package.json");

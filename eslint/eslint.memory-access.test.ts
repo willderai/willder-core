@@ -20,7 +20,7 @@ import { readMemoryTables } from "./eslint.memory-access.mjs";
 const RULE = "memory-access/no-memory-query-outside-authorizer";
 const fixture = (name: string) => readFileSync(`test-fixtures/memory-access/${name}`, "utf8");
 
-const eslint = new ESLint({ overrideConfigFile: "eslint.memory-access.config.mjs" });
+const eslint = new ESLint({ overrideConfigFile: "eslint/eslint.memory-access.config.mjs" });
 
 /** Linting loads the TypeScript parser and every plugin; the first call alone takes seconds. */
 const LINT_TIMEOUT_MS = 30_000;

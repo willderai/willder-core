@@ -10,7 +10,7 @@
 // briefs/[id]/existence-timing.realdb.test.ts measure that). An org admin asking for the
 // same records gets the answer they always got.
 //
-// The structural half is eslint.lookup-gate.mjs, which holds every route to deciding
+// The structural half is eslint/eslint.lookup-gate.mjs, which holds every route to deciding
 // before it looks up, or to services/access/authorize-record.ts.
 //
 // It needs QA_DATABASE_URL naming an isolated, migrated test Postgres; without it the

@@ -9,7 +9,7 @@ import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 const RULE = "memory-access/no-memory-query-outside-authorizer";
-const eslint = new ESLint({ overrideConfigFile: "eslint.scope-gate.config.mjs" });
+const eslint = new ESLint({ overrideConfigFile: "eslint/eslint.scope-gate.config.mjs" });
 
 async function findings(text: string, filePath: string) {
   const [result] = await eslint.lintText(text, { filePath });

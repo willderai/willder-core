@@ -7,7 +7,7 @@ import { SITE_VIDEO_CONNECT_SRC, SITE_VIDEO_MEDIA_SRC } from "./lib/site-videos"
 // A production build without it fails here rather than shipping a CSP that blocks the
 // service; local and preview builds simply leave it out of connect-src.
 //
-// Exported for its unit test (next.config.test.ts); Next.js reads only the default export.
+// Exported for its unit test (tests/repo/next.config.test.ts); Next.js reads only the default export.
 export function memoryServiceOrigin(url: string | undefined, isProductionBuild: boolean): string | undefined {
   if (!url) {
     if (isProductionBuild) {
@@ -101,7 +101,7 @@ const securityHeaders = [
 // body and query, the slashless path is rewritten, and PostHog accepts /e and /flags
 // (checked 2026-10-23 with next dev), so the site-wide skipTrailingSlashRedirect is not set.
 // The browser talks only to 'self' for PostHog, so connect-src needs no asset host.
-// Exported for its unit test (next.config.test.ts).
+// Exported for its unit test (tests/repo/next.config.test.ts).
 export const POSTHOG_API_HOST = "https://us.i.posthog.com";
 export const POSTHOG_ASSETS_HOST = "https://us-assets.i.posthog.com";
 export const posthogRewrites = [

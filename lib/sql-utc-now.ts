@@ -11,7 +11,7 @@
 // The rule this file enforces: raw SQL never writes or compares a Prisma DateTime
 // column against bare now() or CURRENT_TIMESTAMP. It uses `sqlUtcNow`, which is the
 // same instant as UTC wall-clock time whatever the session TimeZone is.
-// eslint.sql-utc-now.mjs fails lint on a bare one in application code, and
+// eslint/eslint.sql-utc-now.mjs fails lint on a bare one in application code, and
 // lib/sql-utc-now.realdb.test.ts proves the difference on Postgres sessions both
 // west and east of UTC.
 import { Prisma } from "@/lib/generated/prisma/client";

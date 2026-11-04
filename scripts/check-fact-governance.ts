@@ -26,7 +26,7 @@
 //
 // Part B seeds and inspects `fact_disputes` rows directly: an operator diagnostic
 // run by hand with the database owner's credentials, never on a request path, and
-// listed in OPERATOR_SCRIPTS (eslint.memory-access.mjs) for that reason.
+// listed in OPERATOR_SCRIPTS (eslint/eslint.memory-access.mjs) for that reason.
 import { createId } from "@paralleldrive/cuid2";
 import { db } from "@/lib/db";
 import { check, orgRootPath } from "@/services/access";

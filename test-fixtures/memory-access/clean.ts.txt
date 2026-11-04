@@ -1,4 +1,4 @@
-// Fixture for eslint.memory-access.test.ts: code the memory-access gate must NOT
+// Fixture for eslint/eslint.memory-access.test.ts: code the memory-access gate must NOT
 // report anywhere, because none of it queries a memory table.
 import { db } from "@/lib/db";
 

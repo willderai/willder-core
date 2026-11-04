@@ -266,7 +266,7 @@ Each line names the file that makes it true.
 ## Credentials that bypass the authorizer
 
 Memory in Postgres is read and written through `check()` in `services/access/check.ts`.
-The lint gate `eslint.memory-access.mjs` enforces this in code: a query against a memory
+The lint gate `eslint/eslint.memory-access.mjs` enforces this in code: a query against a memory
 table (a model marked `@memory` in `prisma/schema.prisma`) outside `services/access` and
 `services/memory` fails `npm run scope-gate:check` in CI, and no `eslint-disable` comment
 can silence it there. The gate does not cover the memory

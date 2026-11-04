@@ -39,10 +39,10 @@ import { formatCitedFacts } from "@/mcp/fact-citation";
 import { fallbackAgentName } from "@/services/audit/actor-names";
 import { registerWillderTools } from "@/mcp/tools";
 import { LOAD_TOKEN_COMMAND } from "@/lib/docs";
-import { FIRST_PROMPT, parseArgs } from "./cli/willder.mjs";
+import { FIRST_PROMPT, parseArgs } from "../../cli/willder.mjs";
 
 const DOCS = ["README.md", "docs/quickstart.md"] as const;
-const read = (file: string) => readFileSync(resolve(__dirname, file), "utf8");
+const read = (file: string) => readFileSync(resolve(__dirname, "..", "..", file), "utf8");
 /** `read -p` is a coprocess read in zsh, so a prompt written with it hangs there. */
 const BASH_ONLY_PROMPT = /read\s+(-\w+\s+)*-\w*p/;
 

@@ -12,7 +12,7 @@ import { CAN_ALLOWED } from "./eslint.refusal-gate.mjs";
 const RULE = "refusal-gate/no-unrecorded-refusal";
 const ROUTE = "app/api/settings/example/route.ts";
 
-const eslint = new ESLint({ overrideConfigFile: "eslint.scope-gate.config.mjs" });
+const eslint = new ESLint({ overrideConfigFile: "eslint/eslint.scope-gate.config.mjs" });
 
 /** Linting loads the TypeScript parser and every plugin; the first call alone takes seconds. */
 const LINT_TIMEOUT_MS = 30_000;

@@ -1,5 +1,5 @@
 // writeAuditRow records the origin on every row it writes. That it is the only writer is
-// enforced by eslint.audit-writer.mjs, which `npm run scope-gate:check` runs in CI.
+// enforced by eslint/eslint.audit-writer.mjs, which `npm run scope-gate:check` runs in CI.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { create } = vi.hoisted(() => ({ create: vi.fn() }));

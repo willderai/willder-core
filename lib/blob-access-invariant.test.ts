@@ -8,7 +8,7 @@
 //   1. lib/blob-storage.ts is the only module that calls the Blob SDK, and it
 //      writes `access: "private"` itself -- the access level is not a
 //      parameter any caller can pass. That is what this file tests.
-//   2. eslint.blob-access.mjs fails the build on any other module importing
+//   2. eslint/eslint.blob-access.mjs fails the build on any other module importing
 //      `@vercel/blob`, in static, re-export, dynamic-`import()` or `require()`
 //      form. That is what keeps half 1 true, and `npm run scope-gate:check`
 //      and `npm run lint:ratchet` both gate on it in CI.

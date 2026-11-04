@@ -7,10 +7,15 @@
 // cannot see by eye: a value that is not reduced to an origin (connect-src matches
 // origins, so a path or trailing slash must not survive into the directive), and an
 // `undefined` leaking into the directive when the variable is absent.
-import { SITE_VIDEO_MEDIA_SRC } from "./lib/site-videos";
+import { SITE_VIDEO_MEDIA_SRC } from "../../lib/site-videos";
 import { describe, expect, it } from "vitest";
 
-import nextConfig, { memoryServiceOrigin, POSTHOG_API_HOST, POSTHOG_ASSETS_HOST, posthogRewrites } from "./next.config";
+import nextConfig, {
+  memoryServiceOrigin,
+  POSTHOG_API_HOST,
+  POSTHOG_ASSETS_HOST,
+  posthogRewrites,
+} from "../../next.config";
 
 describe("memoryServiceOrigin", () => {
   it("reduces a URL to its origin, dropping path and trailing slash", () => {

@@ -118,7 +118,13 @@ const noSessionTimeSql = {
 export const sqlUtcNowGate = {
   files: ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.mjs"],
   // This file names the forms it bans, in its own messages.
-  ignores: ["eslint.sql-utc-now.mjs", "**/*.test.ts", "**/*.test.tsx", "**/*.testsupport.ts", "lib/generated/**"],
+  ignores: [
+    "eslint/eslint.sql-utc-now.mjs",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.testsupport.ts",
+    "lib/generated/**",
+  ],
   plugins: { "sql-utc-now": { rules: { "no-session-time-sql": noSessionTimeSql } } },
   rules: { "sql-utc-now/no-session-time-sql": "error" },
 };

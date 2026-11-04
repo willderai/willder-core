@@ -271,11 +271,11 @@ describe.skipIf(!QA_URL).each(SESSION_TIME_ZONES)(
 );
 
 // SQL functions and triggers live in migrations, which the lint gate
-// (eslint.sql-utc-now.mjs) cannot read, and run with the caller's session TimeZone.
+// (eslint/eslint.sql-utc-now.mjs) cannot read, and run with the caller's session TimeZone.
 // This reads the functions the migrated schema actually holds.
 describe.skipIf(!QA_URL)("SQL functions in the migrated schema, real Postgres", () => {
   it("never compare against the session-local clock", async () => {
-    const { SESSION_TIME_SQL } = await import("../eslint.sql-utc-now.mjs");
+    const { SESSION_TIME_SQL } = await import("../eslint/eslint.sql-utc-now.mjs");
     const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: QA_URL! }) });
     try {
       const functions = await db.$queryRaw<{ name: string; source: string }[]>`

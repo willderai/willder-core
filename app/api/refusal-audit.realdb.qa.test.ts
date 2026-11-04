@@ -2,7 +2,7 @@
 //
 // One audit row per refusal, naming the principal and the decision. check() writes one for every decision it makes, and requireOrgRole()
 // (lib/org-role.ts) one for every org-role refusal. That routes refuse only through
-// those two is a lint rule (eslint.refusal-gate.mjs); this file proves, route by
+// those two is a lint rule (eslint/eslint.refusal-gate.mjs); this file proves, route by
 // route against Postgres, that each refusal really leaves its one row.
 //
 // It needs QA_DATABASE_URL naming an isolated, migrated test Postgres; without it the

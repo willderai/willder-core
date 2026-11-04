@@ -1,4 +1,4 @@
-// Fixture for eslint.memory-access.test.ts: ways of reaching a memory table that
+// Fixture for eslint/eslint.memory-access.test.ts: ways of reaching a memory table that
 // do not look like `db.brief.findFirst`. Every line marked REPORT must be reported.
 import { Prisma, PrismaClient } from "@/lib/generated/prisma/client";
 import { db as database } from "@/lib/db";

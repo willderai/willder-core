@@ -1,13 +1,13 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
-import { scopeContainmentGate } from "./eslint.scope-gate.mjs";
-import { blobAccessGate } from "./eslint.blob-access.mjs";
-import { auditWriterGate } from "./eslint.audit-writer.mjs";
-import { memoryAccessGate } from "./eslint.memory-access.mjs";
-import { sqlUtcNowGate } from "./eslint.sql-utc-now.mjs";
-import { refusalGate } from "./eslint.refusal-gate.mjs";
-import { lookupGate } from "./eslint.lookup-gate.mjs";
+import { scopeContainmentGate } from "./eslint/eslint.scope-gate.mjs";
+import { blobAccessGate } from "./eslint/eslint.blob-access.mjs";
+import { auditWriterGate } from "./eslint/eslint.audit-writer.mjs";
+import { memoryAccessGate } from "./eslint/eslint.memory-access.mjs";
+import { sqlUtcNowGate } from "./eslint/eslint.sql-utc-now.mjs";
+import { refusalGate } from "./eslint/eslint.refusal-gate.mjs";
+import { lookupGate } from "./eslint/eslint.lookup-gate.mjs";
 
 const eslintConfig = defineConfig([
   ...nextVitals,

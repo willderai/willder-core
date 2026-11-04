@@ -5,7 +5,7 @@
 // authorizer gets a brief row without check() having decided the requested
 // action on the brief's own scope. Routes, pages and MCP tools call these
 // functions instead of querying `briefs` themselves, and the memory-access lint
-// gate (eslint.memory-access.mjs) refuses a `briefs` query anywhere else.
+// gate (eslint/eslint.memory-access.mjs) refuses a `briefs` query anywhere else.
 
 import { db } from "@/lib/db";
 import type { Brief } from "@/lib/generated/prisma/client";

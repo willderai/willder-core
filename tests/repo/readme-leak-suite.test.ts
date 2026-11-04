@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = __dirname;
+const repoRoot = resolve(__dirname, "..", "..");
 const read = (file: string) => readFileSync(resolve(repoRoot, file), "utf8");
 
 const readme = read("README.md");

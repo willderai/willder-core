@@ -4,7 +4,7 @@
 // came in through (`metadata.origin`, services/access/origin.ts), the source NIST AU-3
 // asks every audit record for. `origin` is a required argument rather than a field a
 // caller may remember to put in `metadata`, and it is written after the caller's
-// metadata so no caller can overwrite it. eslint.audit-writer.mjs fails the build if
+// metadata so no caller can overwrite it. eslint/eslint.audit-writer.mjs fails the build if
 // any other file writes `audit_log`.
 import type { Prisma } from "@/lib/generated/prisma/client";
 import { db } from "@/lib/db";

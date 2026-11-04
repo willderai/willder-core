@@ -10,7 +10,7 @@ const RULE = "audit-writer/no-audit-write-outside-writer";
 const WRITER = "services/access/audit-row.ts";
 const ELSEWHERE = "services/workflows/example.ts";
 
-const eslint = new ESLint({ overrideConfigFile: "eslint.scope-gate.config.mjs" });
+const eslint = new ESLint({ overrideConfigFile: "eslint/eslint.scope-gate.config.mjs" });
 
 /** Linting loads the TypeScript parser and every plugin; the first call alone takes seconds. */
 const LINT_TIMEOUT_MS = 30_000;
