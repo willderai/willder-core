@@ -256,7 +256,7 @@ Each line names the file that makes it true.
   (`memory-service/README.md`, `memory-service/app/config.py`).
 - **OAuth-only clients are not yet tested.** claude.ai and ChatGPT sign in with OAuth, which
   has been live on the hosted service since 9 Nov 2026 (`mcp/oauth-discovery.ts`); discovery
-  answers, but no connection from either client is recorded yet. <!-- DRAFT -->
+  answers, but no connection from either client is recorded yet.
 - **MCP has no delete tool.** A fact is replaced with `memory_ingest` and `baseVersion`;
   deleting one goes through the app (`mcp/tools/`, `mcp/README.md`).
 - **The Starter account tier returns no facts.** It allows only the `source` and `files`
