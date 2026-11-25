@@ -254,9 +254,9 @@ Each line names the file that makes it true.
 - **The memory service needs Neo4j and a local embedding model** (about 130 MB), plus an
   extraction model key to write. Reads work without a model key
   (`memory-service/README.md`, `memory-service/app/config.py`).
-- **OAuth-only clients cannot connect yet.** claude.ai and ChatGPT sign in with OAuth, which
-  is built but off until `MCP_OAUTH_ENABLED` is turned on in production
-  (`mcp/oauth-discovery.ts`); until then hosted MCP needs a client that sends the bearer header.
+- **OAuth-only clients are not yet tested.** claude.ai and ChatGPT sign in with OAuth, which
+  has been live on the hosted service since 9 Nov 2026 (`mcp/oauth-discovery.ts`); discovery
+  answers, but no connection from either client is recorded yet.
 - **MCP has no delete tool.** A fact is replaced with `memory_ingest` and `baseVersion`;
   deleting one goes through the app (`mcp/tools/`, `mcp/README.md`).
 - **The Starter account tier returns no facts.** It allows only the `source` and `files`

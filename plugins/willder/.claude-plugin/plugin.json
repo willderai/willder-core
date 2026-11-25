@@ -1,0 +1,15 @@
+{
+  "name": "willder",
+  "displayName": "Willder",
+  "version": "0.1.0",
+  "description": "Shared memory for AI agents and teams over MCP, with per-agent access control.",
+  "author": { "name": "Willder", "url": "https://willder.ai" },
+  "homepage": "https://willder.ai",
+  "repository": "https://github.com/willderai/willder-core",
+  "license": "MIT",
+  "keywords": ["memory", "mcp", "access-control", "team"],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://willder.ai/docs/claude-code",
+  "privacyPolicyUrl": "https://willder.ai/legal/privacy",
+  "termsOfServiceUrl": "https://willder.ai/legal/terms"
+}

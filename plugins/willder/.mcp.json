@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "willder": {
+      "type": "http",
+      "url": "https://willder.ai/api/mcp",
+      "headers": { "Authorization": "Bearer ${WILLDER_TOKEN}", "X-Willder-Tools": "coding" }
+    }
+  }
+}

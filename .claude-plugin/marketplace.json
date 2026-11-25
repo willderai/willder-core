@@ -1,0 +1,12 @@
+{
+  "name": "willder-plugins",
+  "description": "Willder shared memory for AI agents",
+  "owner": { "name": "Willder", "url": "https://willder.ai" },
+  "plugins": [
+    {
+      "name": "willder",
+      "source": "./plugins/willder",
+      "description": "Shared memory for AI agents and teams over MCP, with per-agent access control."
+    }
+  ]
+}

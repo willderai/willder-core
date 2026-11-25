@@ -198,9 +198,8 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      # The whole history, not checkout's default single commit: deploy-identity.test.ts
-      # reads files from the commits KNOWN_MIGRATION_EDITS records, and those commits and
-      # their parents reach back to June. Any shard can get that file.
+      # The whole history, not checkout's default single commit: tests that run git
+      # (git ls-files, git log) need a real clone, and any shard can get such a file.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
